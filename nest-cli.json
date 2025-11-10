@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/order_system/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/order_system/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/order_system",
+  "projects": {
+    "auth": {
+      "type": "library",
+      "root": "libs/auth",
+      "entryFile": "index",
+      "sourceRoot": "libs/auth/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/auth/tsconfig.lib.json"
+      }
+    },
+    "catalog": {
+      "type": "application",
+      "root": "apps/catalog",
+      "entryFile": "main",
+      "sourceRoot": "apps/catalog/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/catalog/tsconfig.app.json"
+      }
+    },
+    "notifications": {
+      "type": "application",
+      "root": "apps/notifications",
+      "entryFile": "main",
+      "sourceRoot": "apps/notifications/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/notifications/tsconfig.app.json"
+      }
+    },
+    "order_system": {
+      "type": "application",
+      "root": "apps/order_system",
+      "entryFile": "main",
+      "sourceRoot": "apps/order_system/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/order_system/tsconfig.app.json"
+      }
+    },
+    "orders": {
+      "type": "application",
+      "root": "apps/orders",
+      "entryFile": "main",
+      "sourceRoot": "apps/orders/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/orders/tsconfig.app.json"
+      }
+    },
+    "payments": {
+      "type": "application",
+      "root": "apps/payments",
+      "entryFile": "main",
+      "sourceRoot": "apps/payments/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/payments/tsconfig.app.json"
+      }
+    },
+    "prisma": {
+      "type": "library",
+      "root": "libs/prisma",
+      "entryFile": "index",
+      "sourceRoot": "libs/prisma/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/prisma/tsconfig.lib.json"
+      }
+    },
+    "products-basket": {
+      "type": "application",
+      "root": "apps/products-basket",
+      "entryFile": "main",
+      "sourceRoot": "apps/products-basket/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/products-basket/tsconfig.app.json"
+      }
+    },
+    "user-auth": {
+      "type": "application",
+      "root": "apps/user-auth",
+      "entryFile": "main",
+      "sourceRoot": "apps/user-auth/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/user-auth/tsconfig.app.json"
+      }
+    }
+  }
+}
