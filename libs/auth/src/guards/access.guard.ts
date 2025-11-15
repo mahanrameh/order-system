@@ -11,12 +11,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (err) {
       throw new UnauthorizedException('Invalid access token');
     }
-    try {
-      if (!req.rawAccessToken) {
-        const raw = ExtractJwt.fromAuthHeaderAsBearerToken()(req) as string | null;
-        if (raw) req.rawAccessToken = raw;
-      }
-    } catch {}
+
+    if (!req.rawAccessToken) {
+      const raw = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+      if (raw) req.rawAccessToken = raw;
+    }
 
     if (!user) {
       throw new UnauthorizedException('Login required');

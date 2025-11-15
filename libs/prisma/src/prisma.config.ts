@@ -1,11 +1,11 @@
+import { Prisma } from '@prisma/client';
 
-
-export const prismaConfig = {
-  dataSources: {
+export const prismaConfig: Prisma.PrismaClientOptions = {
+  datasources: {
     db: {
       url: process.env.DATABASE_URL,
     },
   },
-  log: ['warn', 'error'],
-  errorFormat: 'pretty',
+  log: ['query', 'info', 'warn', 'error'], 
+  errorFormat: 'pretty', 
 };

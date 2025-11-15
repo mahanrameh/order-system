@@ -1,7 +1,13 @@
+import { Role } from "libs/prisma/generated";
+
 export type AccessTokenPayload = {
-    userId: number;
+    sub: number;
+    email: string;
+    role: Role;
 }
 
 export type RefreshTokenPayload = {
-    userId: number;
+    sub: number;
+    tokenId: string;
 }
+

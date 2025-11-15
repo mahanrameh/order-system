@@ -1,10 +1,9 @@
 import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
-import { ExtractJwt } from 'passport-jwt';
 
 @Injectable()
-export class RefreshAuthGuard extends AuthGuard('refresh-jwt') {
+export class RefreshAuthGuard extends AuthGuard('refresh') {
   handleRequest(err: any, user: any, info: any, context: ExecutionContext) {
     const req = context.switchToHttp().getRequest<Request>();
 
@@ -12,15 +11,12 @@ export class RefreshAuthGuard extends AuthGuard('refresh-jwt') {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    try {
-      if (!req.refreshToken) {
-        const raw = ExtractJwt.fromBodyField('refreshToken')(req) as string | null;
-        if (raw) req.refreshToken = raw;
-      }
-    } catch {}
+    if (!req.refreshToken) {
+      throw new UnauthorizedException('Refresh token required');
+    }
 
     if (!user) {
-      throw new UnauthorizedException('Refresh token required');
+      throw new UnauthorizedException('Refresh token validation failed');
     }
 
     return user;
