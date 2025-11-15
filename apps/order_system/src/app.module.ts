@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { join } from 'path';
 import { UserAuthModule } from 'apps/user-auth/src/user-auth.module';
 import { PrismaModule } from 'libs/prisma';
+import { RedisModule } from 'libs/redis/redis.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { PrismaModule } from 'libs/prisma';
       isGlobal: true,
       envFilePath: join(process.cwd(), '.env')
     }),
+    RedisModule,
     UserAuthModule,
     PrismaModule
   ],

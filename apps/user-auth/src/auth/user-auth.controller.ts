@@ -15,6 +15,7 @@ import { CreateOtpDto, VerifyOtpDto } from 'libs/common/src/dtos/otp.dto';
 import { SwaggerConsumes } from 'libs/common/src/enums/swagger-consumes.enum';
 import { LocalAuthGuard } from '@app/auth/guards/local.guard';
 import { RefreshAuthGuard } from '@app/auth/guards/refresh.guard';
+import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 
 @Controller('auth')
 export class UserAuthController {
@@ -47,18 +48,21 @@ export class UserAuthController {
   }
 
   @Post('send-otp')
+  @UseGuards(JwtAuthGuard)
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
   async sendOtp(@Body() dto: CreateOtpDto, @Res() res: Response) {
     return this.authService.sendOtp(res, dto.userId, dto.phoneNumber);
   }
 
   @Post('verify-otp')
+  @UseGuards(JwtAuthGuard)
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
   async verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.checkOtp(dto);
   }
 
   @Post('resend-otp')
+  @UseGuards(JwtAuthGuard)
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
   async resendOtp(@Body() dto: CreateOtpDto, @Res() res: Response) {
     return this.authService.sendOtp(res, dto.userId, dto.phoneNumber);

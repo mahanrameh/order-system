@@ -61,6 +61,7 @@ model Product {
   name        String
   description String?
   price       Float
+  stock       Int             @default(0)
   status      ProductStatus   @default(AVAILABLE)
   category    ProductCategory @default(TOYS)
   baskets     Basket[]
