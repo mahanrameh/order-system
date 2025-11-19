@@ -12,39 +12,44 @@ export class ProductsService {
   async getProduct(id: number) {
     const key = `product:${id}`;
 
-    const cached = await this.cache.get<any>(key);
-    if (cached) {
-      return cached;
+    try {
+      const cached = await this.cache.get<any>(key);
+      if (cached) {
+        return cached;
+      }
+
+      const product = await this.prisma.client.product.findUnique({ 
+        where: { id },
+      });
+
+      if (product) {
+        await this.cache.set(key, product, 300);
+      }
+
+      return product;
+    } catch (err) {
+      console.error('Error fetching product:', err);
+      throw err;
     }
-
-    const product = await this.prisma.client.product.findUnique({
-      where: { id },
-    });
-
-
-    if (product) {
-      await this.cache.set(key, product, 300);
-    }
-
-    return product;
   }
-
 
   async listProducts() {
     const key = `products:all`;
 
-    const cached = await this.cache.get<any[]>(key);
-    if (cached) {
-      return cached;
-    }
+    try {
+      const cached = await this.cache.get<any[]>(key);
+      if (cached) {
+        return cached;
+      }
 
-    const products = await this.prisma.client.product.findMany();
+      const products = await this.prisma.client.product.findMany(); 
 
-    if (products.length > 0) {
       await this.cache.set(key, products, 300);
+
+      return products;
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      throw err;
     }
-
-    return products;
   }
-
 }

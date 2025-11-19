@@ -7,7 +7,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { UserAuthService } from './user-auth.service';
 import { AuthLoginDto, AuthRegisterDto } from '../dto/user.dto';
@@ -17,6 +17,7 @@ import { LocalAuthGuard } from '@app/auth/guards/local.guard';
 import { RefreshAuthGuard } from '@app/auth/guards/refresh.guard';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 
+@ApiBearerAuth('bearer')
 @Controller('auth')
 export class UserAuthController {
   constructor(private readonly authService: UserAuthService) {}
@@ -28,11 +29,11 @@ export class UserAuthController {
   }
 
   @Post('login')
-  @UseGuards(LocalAuthGuard)
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
   @HttpCode(200)
   async login(@Body() dto: AuthLoginDto, @Res() res: Response) {
-    return this.authService.login(dto, res);
+    const result = await this.authService.login(dto, res);
+    return res.json(result);
   }
 
   @UseGuards(RefreshAuthGuard)

@@ -48,14 +48,14 @@ export class UserController {
 
   @Patch(':id/role')
   @ApiConsumes(SwaggerConsumes.Json, SwaggerConsumes.UrlEncoded)
-  @UseGuards(RolesGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   changeUserRole(@Param('id', ParseIntPipe) id: number) {
     return this.userService.changeUserRole(id);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   deleteUser(@Param('id', ParseIntPipe) id: number) {
     return this.userService.deleteUser(id);

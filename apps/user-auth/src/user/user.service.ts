@@ -1,9 +1,22 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from 'libs/prisma';
 import { UpdateUserDto } from '../dto/user.dto';
 import { PaginationDto } from 'libs/common/src/dtos/pagination.dto';
-import { paginationSolver, paginationGenerator } from 'libs/common/src/utils/pagination.util';
-import { AuthMessage, NotFoundMessage, PublicMessage } from 'libs/common/src/enums/message.enum';
+import {
+  paginationSolver,
+  paginationGenerator,
+} from 'libs/common/src/utils/pagination.util';
+import {
+  AuthMessage,
+  NotFoundMessage,
+  PublicMessage,
+  ConflictMessage,
+} from 'libs/common/src/enums/message.enum';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -33,10 +46,13 @@ export class UserService {
     const email = dto.email ? dto.email.trim().toLowerCase() : undefined;
     const phone = dto.phone ? dto.phone.trim() : undefined;
 
-    const existingEmail = email ? await this.prisma.client.user.findUnique({ where: { email } }) : null;
-      if (existingEmail && existingEmail.id !== userId) {
-        throw new BadRequestException(AuthMessage.AlreadyExistAccount);
+    const existingEmail = email
+      ? await this.prisma.client.user.findUnique({ where: { email } })
+      : null;
+    if (existingEmail && existingEmail.id !== userId) {
+      throw new ConflictException(ConflictMessage.EmailAlreadyExists);
     }
+
     try {
       let hashedPassword: string | undefined;
       if (dto.password) {
@@ -55,12 +71,12 @@ export class UserService {
 
       return {
         message: PublicMessage.Updated,
-        user: { 
-            id: user.id, 
-            username: user.username, 
-            email: user.email, 
-            phone: user.phone, 
-            role: user.role 
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
         },
       };
     } catch (err) {
@@ -73,7 +89,18 @@ export class UserService {
     const user = await this.prisma.client.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException(NotFoundMessage.NotFoundUser);
 
-    if (user.role === 'ADMIN') return true;
+    if (user.role === 'ADMIN') {
+      return {
+        message: PublicMessage.Updated,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+      };
+    }
 
     const newUser = await this.prisma.client.user.update({
       where: { id },
@@ -82,27 +109,31 @@ export class UserService {
 
     return {
       message: PublicMessage.Updated,
-      user: { 
-        id: newUser.id, 
-        username: newUser.username, 
-        email: newUser.email, 
-        phone: newUser.phone, 
-        role: newUser.role 
-    },
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+        phone: newUser.phone,
+        role: newUser.role,
+      },
     };
   }
 
   async deleteUser(id: number) {
-    const user = await this.prisma.client.user.delete({ where: { id } });
-    return {
-      message: PublicMessage.Deleted,
-      user: { 
-        id: user.id, 
-        username: user.username, 
-        email: user.email, 
-        phone: user.phone, 
-        role: user.role 
-    },
-    };
+    try {
+      const user = await this.prisma.client.user.delete({ where: { id: id } });
+      return {
+        message: PublicMessage.Deleted,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+      };
+    } catch (err) {
+      throw new NotFoundException(NotFoundMessage.NotFoundUser);
+    }
   }
 }

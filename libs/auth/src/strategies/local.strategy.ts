@@ -3,12 +3,13 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-local';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'libs/prisma';
+import { AuthMessage } from 'libs/common/src/enums/message.enum';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy, 'local') {
   constructor(private readonly prisma: PrismaService) {
     super({
-      usernameField: 'email', 
+      usernameField: 'email',
       passReqToCallback: false,
     });
   }
@@ -16,15 +17,14 @@ export class LocalStrategy extends PassportStrategy(Strategy, 'local') {
   async validate(email: string, password: string): Promise<any> {
     const user = await this.prisma.client.user.findUnique({ where: { email } });
     if (!user || !user.password) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(AuthMessage.InvalidCredentials);
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(AuthMessage.InvalidCredentials);
     }
 
-   
     return {
       id: user.id,
       username: user.username,

@@ -1,44 +1,78 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsNumber, IsEnum } from 'class-validator';
 import { ProductStatus, ProductCategory } from '@prisma/client';
 
 export class CreateProductDto {
-  @IsString() 
+  @ApiProperty()
+  @IsString()
   name: string;
-  @IsOptional() 
-  @IsString() 
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
   description?: string;
-  @IsNumber() 
+
+  @ApiProperty()
+  @IsNumber()
   price: number;
-  @IsNumber() 
-  stock: number;
-  @IsEnum(ProductStatus) 
+
+  @ApiProperty()
+  @IsNumber()
+  stock: number; 
+
+  @ApiProperty()
+  @IsEnum(ProductStatus)
   status: ProductStatus;
-  @IsEnum(ProductCategory) 
+
+  @ApiProperty()
+  @IsEnum(ProductCategory)
   category: ProductCategory;
 }
 
 export class UpdateProductDto {
-  @IsOptional() 
-  @IsString() 
-  name?: string;
-  @IsOptional() 
-  @IsString() 
-  description?: string;
-  @IsOptional() 
-  @IsNumber() 
-  price?: number;
-  @IsOptional() 
-  @IsNumber() 
-  stock?: number;
-  @IsOptional() 
-  @IsEnum(ProductStatus) 
-  status?: ProductStatus;
+  @ApiProperty()
   @IsOptional()
-  @IsEnum(ProductCategory) 
+  @IsString()
+  name?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsNumber()
+  price?: number;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsEnum(ProductStatus)
+  status?: ProductStatus;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsEnum(ProductCategory)
   category?: ProductCategory;
 }
 
 export class ReserveInventoryDto {
-  @IsNumber() 
+  @ApiProperty()
+  @IsNumber()
   quantity: number;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  reason?: string; 
+}
+
+export class RestockProductDto {
+  @ApiProperty()
+  @IsNumber()
+  quantity: number;
+
+  @ApiProperty()
+  @IsString()
+  reason: string; 
 }

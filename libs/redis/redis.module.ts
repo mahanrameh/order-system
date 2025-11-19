@@ -23,10 +23,17 @@ import { RedisLockService } from './redis-lock.service';
     RedisLockService,
     {
       provide: 'REDIS_CLIENT',
-      useFactory: () => new Redis({
-        host: process.env.REDIS_HOST ?? 'localhost',
-        port: Number(process.env.REDIS_PORT ?? 6379),
-      }),
+      useFactory: () => {
+        const client = new Redis({
+          host: process.env.REDIS_HOST ?? 'localhost',
+          port: Number(process.env.REDIS_PORT ?? 6379),
+        });
+
+        client.on('connect', () => console.log('Redis connected'));
+        client.on('error', (err) => console.error('Redis error:', err));
+
+        return client;
+      },
     },
   ],
   exports: [RedisCacheService, RedisRateLimiterService, RedisLockService, 'REDIS_CLIENT'],

@@ -1,6 +1,8 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { ProductsService } from './products.service';
+import { ApiBearerAuth } from '@nestjs/swagger';
 
+@ApiBearerAuth('bearer')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productService: ProductsService) {}
