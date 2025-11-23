@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'libs/prisma';
 import { RedisCacheService } from '../../../libs/redis/redis-cache.service';
 import { RedisLockService } from '../../../libs/redis/redis-lock.service';
@@ -8,6 +8,7 @@ import {
   ReserveInventoryDto, 
   RestockProductDto 
 } from './dto/product-catalog.dto';
+import { ProductStatus } from 'libs/prisma/generated';
 
 @Injectable()
 export class CatalogService {
@@ -18,10 +19,10 @@ export class CatalogService {
   ) {}
 
   async createProduct(dto: CreateProductDto) {
-    const product = await this.prisma.client.product.create({ data: dto });
+    const product = await this.prisma.product.create({ data: dto });
 
     if (dto.stock > 0) {
-      await this.prisma.client.stockMovement.create({
+      await this.prisma.stockMovement.create({
         data: {
           productId: product.id,
           change: dto.stock,
@@ -36,36 +37,72 @@ export class CatalogService {
 
   async updateProduct(id: number, dto: UpdateProductDto) {
     return this.lock.withLock(`product:${id}`, async () => {
-      const updated = await this.prisma.client.product.update({
+      const existing = await this.prisma.product.findFirst({
+        where: { id, deletedAt: null }, 
+      });
+      if (!existing) throw new NotFoundException('Product not found');
+
+      const updated = await this.prisma.product.update({
         where: { id },
         data: dto,
       });
-      await this.cache.del(`product:${id}`);
+
+      // re‑cache updated product
+      await this.cache.set(`product:${id}`, updated, 300);
       return updated;
     });
   }
 
   async deleteProduct(id: number) {
     return this.lock.withLock(`product:${id}`, async () => {
-      const deleted = await this.prisma.client.product.delete({ where: { id } });
+      const existing = await this.prisma.product.findFirst({
+        where: { id, deletedAt: null },
+      });
+      if (!existing) throw new NotFoundException('Product not found');
+
+      const deleted = await this.prisma.product.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+
       await this.cache.del(`product:${id}`);
       return deleted;
     });
   }
 
+  async restoreProduct(id: number) {
+    const product = await this.prisma.product.findFirst({ where: { id } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const restored = await this.prisma.product.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
+
+    await this.cache.set(`product:${id}`, restored, 300);
+    return restored;
+  }
+
   async reserveInventory(productId: number, dto: ReserveInventoryDto) {
     return this.lock.withLock(`inventory:${productId}`, async () => {
-      const product = await this.prisma.client.product.findUnique({ where: { id: productId } });
-      if (!product || product.stock < dto.quantity) {
-        throw new Error('Not enough stock');
+      const product = await this.prisma.product.findFirst({
+        where: { id: productId, deletedAt: null },
+      });
+      if (!product) throw new NotFoundException('Product not found');
+      if (product.stock < dto.quantity) {
+        throw new BadRequestException('Not enough stock');
       }
 
-      const updated = await this.prisma.client.product.update({
+      const newStock = product.stock - dto.quantity;
+      const updated = await this.prisma.product.update({
         where: { id: productId },
-        data: { stock: product.stock - dto.quantity },
+        data: { 
+          stock: newStock,
+          status: newStock <= 0 ? ProductStatus.OUT_OF_STOCK : ProductStatus.AVAILABLE,
+        },
       });
 
-      await this.prisma.client.stockMovement.create({
+      await this.prisma.stockMovement.create({
         data: {
           productId,
           change: -dto.quantity,
@@ -73,23 +110,28 @@ export class CatalogService {
         },
       });
 
+      await this.cache.set(`product:${productId}`, updated, 300);
       return updated;
     });
   }
 
   async restockProduct(productId: number, dto: RestockProductDto) {
     return this.lock.withLock(`inventory:${productId}`, async () => {
-      const product = await this.prisma.client.product.findUnique({ where: { id: productId } });
-      if (!product) {
-        throw new Error('Product not found');
-      }
+      const product = await this.prisma.product.findFirst({
+        where: { id: productId, deletedAt: null },
+      });
+      if (!product) throw new NotFoundException('Product not found');
 
-      const updated = await this.prisma.client.product.update({
+      const newStock = product.stock + dto.quantity;
+      const updated = await this.prisma.product.update({
         where: { id: productId },
-        data: { stock: product.stock + dto.quantity },
+        data: { 
+          stock: newStock,
+          status: newStock > 0 ? ProductStatus.AVAILABLE : ProductStatus.OUT_OF_STOCK,
+        },
       });
 
-      await this.prisma.client.stockMovement.create({
+      await this.prisma.stockMovement.create({
         data: {
           productId,
           change: dto.quantity,
@@ -97,6 +139,7 @@ export class CatalogService {
         },
       });
 
+      await this.cache.set(`product:${productId}`, updated, 300);
       return updated;
     });
   }

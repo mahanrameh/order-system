@@ -6,6 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated"
 }
 
 datasource db {
@@ -28,32 +29,35 @@ model User {
   otps          Otp[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
 
   @@map("users")
 }
 
 model RefreshToken {
-  id        Int      @id @default(autoincrement())
-  tokenId   String   @unique
-  tokenHash String   @unique
+  id        Int       @id @default(autoincrement())
+  tokenId   String    @unique
+  tokenHash String    @unique
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
-  isRevoked Boolean  @default(false)
+  user      User      @relation(fields: [userId], references: [id])
+  isRevoked Boolean   @default(false)
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
   @@map("refresh_tokens")
 }
 
 model Otp {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   phoneNumber String
   code        String
-  isVerified  Boolean  @default(false)
+  isVerified  Boolean   @default(false)
   userId      Int
-  user        User     @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
   expiredAt   DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
 }
 
 model Product {
@@ -64,23 +68,41 @@ model Product {
   stock       Int             @default(0)
   status      ProductStatus   @default(AVAILABLE)
   category    ProductCategory @default(TOYS)
-  baskets     Basket[]
+  discount    Float?          @default(0)
+  basketItems BasketItem[]
+  orderItems  OrderItem[]
+  stockMoves  StockMovement[]
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
 
   @@map("products")
 }
 
 model Basket {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @unique
-  products  Product[]
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders    Order[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          Int          @id @default(autoincrement())
+  userId      Int          @unique
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  basketItems BasketItem[]
+  orders      Order[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
 
   @@map("baskets")
+}
+
+model BasketItem {
+  id        Int       @id @default(autoincrement())
+  basketId  Int
+  productId Int
+  quantity  Int
+  basket    Basket    @relation(fields: [basketId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@map("basket_items")
 }
 
 model Order {
@@ -93,10 +115,38 @@ model Order {
   basketId    Int
   basket      Basket      @relation(fields: [basketId], references: [id])
   payment     Payment?
+  orderItems  OrderItem[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
 
   @@map("orders")
+}
+
+model OrderItem {
+  id        Int       @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
+  price     Float
+  order     Order     @relation(fields: [orderId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@map("order_items")
+}
+
+model StockMovement {
+  id        Int       @id @default(autoincrement())
+  productId Int
+  change    Int
+  reason    String
+  product   Product   @relation(fields: [productId], references: [id])
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@map("stock_movements")
 }
 
 model Payment {
@@ -110,17 +160,19 @@ model Payment {
   order     Order         @relation(fields: [orderId], references: [id])
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
 
   @@map("payments")
 }
 
 model Notification {
-  id      Int              @id @default(autoincrement())
-  type    NotificationType
-  message String
-  sentAt  DateTime         @default(now())
-  userId  Int
-  user    User             @relation(fields: [userId], references: [id])
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  message   String
+  sentAt    DateTime         @default(now())
+  userId    Int
+  user      User             @relation(fields: [userId], references: [id])
+  deletedAt DateTime?
 
   @@map("notifications")
 }

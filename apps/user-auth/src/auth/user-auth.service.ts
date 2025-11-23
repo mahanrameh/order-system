@@ -28,7 +28,7 @@ import { REQUEST } from '@nestjs/core';
 export class UserAuthService {
   constructor(
     @Inject(REQUEST) private request: Request,
-    private prisma: PrismaService,
+    private readonly prisma: PrismaService,
     private tokenService: TokenService,
   ) {}
 
@@ -46,13 +46,17 @@ export class UserAuthService {
     try {
       const hashedPassword = await bcrypt.hash(dto.password, 12);
 
-      const user = await this.prisma.client.user.create({
+      const user = await this.prisma.user.create({
         data: {
           username,
           email,
           phone,
           password: hashedPassword,
+          basket: {
+            create: {},
+          },
         },
+        include: { basket: true }, 
       });
 
       return {
@@ -63,6 +67,7 @@ export class UserAuthService {
           email: user.email,
           phone: user.phone,
           role: user.role,
+          basketId: user.basket?.id,
         },
       };
     } catch (err) {
@@ -70,6 +75,7 @@ export class UserAuthService {
       throw new BadRequestException(AuthMessage.TryAgain);
     }
   }
+
 
   async login(dto: AuthLoginDto, res: Response) {
     const email = dto.email?.trim();
@@ -79,7 +85,7 @@ export class UserAuthService {
       throw new BadRequestException(BadRequestMessage.InValidLoginData);
     }
 
-    const user = await this.prisma.client.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({ where: { email, deletedAt: null } });
     if (!user || !user.password) {
       throw new UnauthorizedException(AuthMessage.InvalidCredentials);
     }
@@ -96,7 +102,7 @@ export class UserAuthService {
     const rawRefreshToken = randomBytes(32).toString('base64url');
     const hashedRefreshToken = createHash('sha256').update(rawRefreshToken).digest('hex');
 
-    await this.prisma.client.refreshToken.create({
+    await this.prisma.refreshToken.create({
       data: {
         tokenId,
         tokenHash: hashedRefreshToken,
@@ -132,13 +138,26 @@ export class UserAuthService {
     }
 
     const hashed = createHash('sha256').update(refreshToken).digest('hex');
-    const stored = await this.findRefreshToken(hashed);
+    const stored = await this.prisma.refreshToken.findFirst({
+      where: {
+        tokenHash: hashed,
+        isRevoked: false,
+        deletedAt: null, 
+      },
+      include: {
+        user: true, 
+      },
+    });
 
-    if (!stored || stored.expiresAt < new Date() || stored.isRevoked) {
+    if (!stored || !stored.user || stored.expiresAt < new Date()) {
       throw new UnauthorizedException(AuthMessage.InvalidOrExpiredRefreshToken);
     }
 
-    const payload = { sub: stored.user.id, email: stored.user.email, role: stored.user.role };
+    const payload = {
+      sub: stored.user.id,
+      email: stored.user.email,
+      role: stored.user.role,
+    };
     const newAccessToken = this.tokenService.createAccessToken(payload);
 
     return {
@@ -166,9 +185,9 @@ export class UserAuthService {
       throw new NotFoundException(NotFoundMessage.NotFoundRefreshToken);
     }
 
-    await this.prisma.client.refreshToken.update({
+    await this.prisma.refreshToken.update({
       where: { id: stored.id },
-      data: { isRevoked: true },
+      data: { isRevoked: true, deletedAt: new Date() }, 
     });
 
     res.clearCookie(CookieKeys.REFRESH);
@@ -194,17 +213,17 @@ export class UserAuthService {
   }
 
   async saveOtp(userId: number, phoneNumber: string, code: string, expiresAt: Date) {
-    const existingOtp = await this.prisma.client.otp.findFirst({
-      where: { userId },
+    const existingOtp = await this.prisma.otp.findFirst({
+      where: { userId, deletedAt: null  },
     });
 
     if (existingOtp) {
-      await this.prisma.client.otp.update({
+      await this.prisma.otp.update({
         where: { id: existingOtp.id },
         data: { code, expiredAt: expiresAt, isVerified: false, phoneNumber },
       });
     } else {
-      await this.prisma.client.otp.create({
+      await this.prisma.otp.create({
         data: {
           userId,
           phoneNumber,
@@ -228,7 +247,7 @@ export class UserAuthService {
   }
 
   async findRefreshToken(token: string) {
-    const validRefreshToken = await this.prisma.client.refreshToken.findFirst({
+    const validRefreshToken = await this.prisma.refreshToken.findFirst({
       where: { tokenHash: token, isRevoked: false },
       include: { user: true },
     });
@@ -240,11 +259,11 @@ export class UserAuthService {
 
   private async ensureUniqueFields(email?: string, phone?: string) {
     if (email) {
-      const byEmail = await this.prisma.client.user.findUnique({ where: { email } });
+      const byEmail = await this.prisma.user.findUnique({ where: { email, deletedAt: null  } });
       if (byEmail) throw new ConflictException(ConflictMessage.EmailAlreadyExists);
     }
     if (phone) {
-      const byPhone = await this.prisma.client.user.findUnique({ where: { phone } });
+      const byPhone = await this.prisma.user.findUnique({ where: { phone, deletedAt: null  } });
       if (byPhone) throw new ConflictException(ConflictMessage.PhoneAlreadyExists);
     }
     return true;

@@ -25,18 +25,23 @@ export class UserService {
 
   async getUsers(dto: PaginationDto) {
     const { limit, page, skip } = paginationSolver(dto);
-    const users = await this.prisma.client.user.findMany({
+    const users = await this.prisma.user.findMany({
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
+      where: { deletedAt: null }, 
     });
-    const count = await this.prisma.client.user.count();
+    const count = await this.prisma.user.count({
+      where: { deletedAt: null }, 
+    });
 
     return { pagination: paginationGenerator(count, page, limit), users };
   }
 
   async getUserById(id: number) {
-    const user = await this.prisma.client.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!user) throw new NotFoundException(NotFoundMessage.NotFoundUser);
     return user;
   }
@@ -47,7 +52,7 @@ export class UserService {
     const phone = dto.phone ? dto.phone.trim() : undefined;
 
     const existingEmail = email
-      ? await this.prisma.client.user.findUnique({ where: { email } })
+      ? await this.prisma.user.findFirst({ where: { email, deletedAt: null } }) 
       : null;
     if (existingEmail && existingEmail.id !== userId) {
       throw new ConflictException(ConflictMessage.EmailAlreadyExists);
@@ -59,7 +64,7 @@ export class UserService {
         hashedPassword = await bcrypt.hash(dto.password, 12);
       }
 
-      const user = await this.prisma.client.user.update({
+      const user = await this.prisma.user.update({
         where: { id: userId },
         data: {
           ...(username && { username }),
@@ -86,7 +91,9 @@ export class UserService {
   }
 
   async changeUserRole(id: number) {
-    const user = await this.prisma.client.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null }, 
+    });
     if (!user) throw new NotFoundException(NotFoundMessage.NotFoundUser);
 
     if (user.role === 'ADMIN') {
@@ -102,7 +109,7 @@ export class UserService {
       };
     }
 
-    const newUser = await this.prisma.client.user.update({
+    const newUser = await this.prisma.user.update({
       where: { id },
       data: { role: 'ADMIN' },
     });
@@ -121,7 +128,16 @@ export class UserService {
 
   async deleteUser(id: number) {
     try {
-      const user = await this.prisma.client.user.delete({ where: { id: id } });
+      const existing = await this.prisma.user.findFirst({
+        where: { id, deletedAt: null }, 
+      });
+      if (!existing) throw new NotFoundException(NotFoundMessage.NotFoundUser);
+
+      const user = await this.prisma.user.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+
       return {
         message: PublicMessage.Deleted,
         user: {

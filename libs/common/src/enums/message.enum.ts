@@ -54,3 +54,10 @@ export enum RoleMessage {
   AccessDenied = 'دسترسی غیرمجاز: نقش شما مجاز به این عملیات نمی‌باشد',
   RequiresRoles = 'برای دسترسی به این مسیر نیاز به نقش‌های مشخص شده دارید',
 }
+
+export enum BasketMessage {
+  ItemAdded = 'محصول با موفقیت به سبد خرید اضافه شد',
+  ItemRemoved = 'محصول از سبد خرید حذف شد',
+  BasketCleared = 'سبد خرید پاک شد',
+  BasketFinalized = 'سبد خرید برای سفارش نهایی شد',
+}

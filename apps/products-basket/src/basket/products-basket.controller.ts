@@ -1,12 +1,13 @@
-import { 
-  Controller, 
-  Post, 
-  Put, 
-  Delete, 
-  Get, 
-  Body, 
-  Param, 
-  UseGuards 
+import {
+  Controller,
+  Post,
+  Put,
+  Delete,
+  Get,
+  Body,
+  Param,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ProductsBasketService } from './products-basket.service';
 import { ApiTags, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
@@ -15,63 +16,57 @@ import { Roles } from 'libs/common/src/decorators/role.decorator';
 import { Role } from 'libs/common/src/enums/role.enum';
 import { SwaggerConsumes } from 'libs/common/src/enums/swagger-consumes.enum';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
+import { AddToBasketDto, UpdateQuantityDto } from '../dto/basket.dto';
 
 @ApiTags('basket')
 @ApiBearerAuth('bearer')
+@UseGuards(JwtAuthGuard) // protect all basket routes by default
 @Controller('basket')
 export class ProductsBasketController {
   constructor(private readonly basketService: ProductsBasketService) {}
 
-  @Post('create/:userId')
-  @Roles(Role.ADMIN)
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  async createBasket(@Param('userId') userId: string) {
-    return this.basketService.createBasket(Number(userId));
-  }
-
   @Post('add')
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async addToBasket(
-    @Body('userId') userId: number, 
-    @Body('productId') productId: number,
-    @Body('quantity') quantity?: number,
-  ) {
-    return this.basketService.addToBasket(userId, productId, quantity ?? 1);
+  async addToBasket(@Req() req, @Body() dto: AddToBasketDto) {
+    return this.basketService.addToBasket(req.user.id, dto.productId, dto.quantity ?? 1);
   }
 
-  @Post('remove')
+  @Put('quantity')
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async removeFromBasket(
-    @Body('userId') userId: number, 
-    @Body('productId') productId: number
-  ) {
-    return this.basketService.removeFromBasket(userId, productId);
+  async updateQuantity(@Req() req, @Body() dto: UpdateQuantityDto) {
+    return this.basketService.updateQuantity(req.user.id, dto.productId, dto.quantity);
   }
 
-  @Put('update/:userId')
-  @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async updateBasket(
-    @Param('userId') userId: string, 
-    @Body('items') items: { productId: number; quantity: number }[]
-  ) {
-    return this.basketService.updateBasket(Number(userId), items);
+  @Delete('item/:productId')
+  async removeFromBasket(@Req() req, @Param('productId') productId: string) {
+    return this.basketService.removeFromBasket(req.user.id, Number(productId));
   }
 
-  @Get(':userId')
-  async getBasket(@Param('userId') userId: string) {
-    return this.basketService.getBasket(Number(userId));
+  @Delete('clear')
+  async clearBasket(@Req() req) {
+    return this.basketService.clearBasket(req.user.id);
+  }
+
+  @Get()
+  async getBasket(@Req() req) {
+    return this.basketService.getBasket(req.user.id);
+  }
+
+  @Post('finalize')
+  async finalizeBasket(@Req() req) {
+    return this.basketService.finalizeBasket(req.user.id);
   }
 
   @Delete(':userId')
   @Roles(Role.ADMIN)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   async deleteBasket(@Param('userId') userId: string) {
     return this.basketService.deleteBasket(Number(userId));
   }
 
-  @Get()
+  @Get('all')
   @Roles(Role.ADMIN)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   async listBaskets() {
     return this.basketService.listBaskets();
   }
