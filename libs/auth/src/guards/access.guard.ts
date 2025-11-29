@@ -8,6 +8,7 @@ import { ExtractJwt } from 'passport-jwt';
 export class JwtAuthGuard extends AuthGuard('jwt') {
   handleRequest(err: any, user: any, info: any, context: ExecutionContext) {
     const req = context.switchToHttp().getRequest<Request>();
+    console.log('JwtAuthGuard user:', user);
 
     if (err) {
       throw new UnauthorizedException('Invalid access token');
@@ -16,6 +17,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!req.rawAccessToken) {
       const raw = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
       if (raw) (req as any).rawAccessToken = raw;
+
+      console.log('JwtAuthGuard token:', raw);
     }
 
     if (!user) {

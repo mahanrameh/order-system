@@ -1,10 +1,28 @@
 import { Module } from '@nestjs/common';
-import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrdersController } from './orders.controller';
+import { PrismaModule } from 'libs/prisma';
+import { AuthModule } from '@app/auth';
+import { RedisModule } from 'libs/redis/redis.module';
+import { RedisLockService } from 'libs/redis/redis-lock.service';
+import { ProductsBasketModule } from 'apps/products-basket/src/products-basket.module';
+import { OrderRepository } from './repositories/order.repository';
+import { StockMovementRepository } from './repositories/stock-movement.repository';
 
 @Module({
-  imports: [],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    RedisModule,
+    ProductsBasketModule,
+  ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [
+    OrdersService, 
+    RedisLockService,
+    OrderRepository, 
+    StockMovementRepository,
+  ],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

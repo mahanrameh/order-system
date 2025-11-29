@@ -1,5 +1,4 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from 'libs/prisma';
 import { RedisCacheService } from '../../../libs/redis/redis-cache.service';
 import { RedisLockService } from '../../../libs/redis/redis-lock.service';
 import { 
@@ -9,25 +8,24 @@ import {
   RestockProductDto 
 } from './dto/product-catalog.dto';
 import { ProductStatus } from 'libs/prisma/generated';
+import { CatalogRepository } from './repositories/catalog.repository';
 
 @Injectable()
 export class CatalogService {
   constructor(
-    private prisma: PrismaService,
-    private cache: RedisCacheService,
-    private lock: RedisLockService,
+    private readonly repo: CatalogRepository,
+    private readonly cache: RedisCacheService,
+    private readonly lock: RedisLockService,
   ) {}
 
   async createProduct(dto: CreateProductDto) {
-    const product = await this.prisma.product.create({ data: dto });
+    const product = await this.repo.createProduct(dto);
 
     if (dto.stock > 0) {
-      await this.prisma.stockMovement.create({
-        data: {
-          productId: product.id,
-          change: dto.stock,
-          reason: 'Initial stock',
-        },
+      await this.repo.createStockMovement({
+        product: { connect: { id: product.id } },
+        change: dto.stock,
+        reason: 'Initial stock',
       });
     }
 
@@ -37,17 +35,11 @@ export class CatalogService {
 
   async updateProduct(id: number, dto: UpdateProductDto) {
     return this.lock.withLock(`product:${id}`, async () => {
-      const existing = await this.prisma.product.findFirst({
-        where: { id, deletedAt: null }, 
-      });
+      const existing = await this.repo.findProductById(id);
       if (!existing) throw new NotFoundException('Product not found');
 
-      const updated = await this.prisma.product.update({
-        where: { id },
-        data: dto,
-      });
+      const updated = await this.repo.updateProduct(id, dto);
 
-      // re‑cache updated product
       await this.cache.set(`product:${id}`, updated, 300);
       return updated;
     });
@@ -55,15 +47,10 @@ export class CatalogService {
 
   async deleteProduct(id: number) {
     return this.lock.withLock(`product:${id}`, async () => {
-      const existing = await this.prisma.product.findFirst({
-        where: { id, deletedAt: null },
-      });
+      const existing = await this.repo.findProductById(id);
       if (!existing) throw new NotFoundException('Product not found');
 
-      const deleted = await this.prisma.product.update({
-        where: { id },
-        data: { deletedAt: new Date() },
-      });
+      const deleted = await this.repo.softDeleteProduct(id);
 
       await this.cache.del(`product:${id}`);
       return deleted;
@@ -71,13 +58,10 @@ export class CatalogService {
   }
 
   async restoreProduct(id: number) {
-    const product = await this.prisma.product.findFirst({ where: { id } });
+    const product = await this.repo.findProductById(id);
     if (!product) throw new NotFoundException('Product not found');
 
-    const restored = await this.prisma.product.update({
-      where: { id },
-      data: { deletedAt: null },
-    });
+    const restored = await this.repo.restoreProduct(id);
 
     await this.cache.set(`product:${id}`, restored, 300);
     return restored;
@@ -85,29 +69,22 @@ export class CatalogService {
 
   async reserveInventory(productId: number, dto: ReserveInventoryDto) {
     return this.lock.withLock(`inventory:${productId}`, async () => {
-      const product = await this.prisma.product.findFirst({
-        where: { id: productId, deletedAt: null },
-      });
+      const product = await this.repo.findProductById(productId);
       if (!product) throw new NotFoundException('Product not found');
       if (product.stock < dto.quantity) {
         throw new BadRequestException('Not enough stock');
       }
 
       const newStock = product.stock - dto.quantity;
-      const updated = await this.prisma.product.update({
-        where: { id: productId },
-        data: { 
-          stock: newStock,
-          status: newStock <= 0 ? ProductStatus.OUT_OF_STOCK : ProductStatus.AVAILABLE,
-        },
+      const updated = await this.repo.updateProduct(productId, { 
+        stock: newStock,
+        status: newStock <= 0 ? ProductStatus.OUT_OF_STOCK : ProductStatus.AVAILABLE,
       });
 
-      await this.prisma.stockMovement.create({
-        data: {
-          productId,
-          change: -dto.quantity,
-          reason: dto.reason ?? 'Reserved inventory',
-        },
+      await this.repo.createStockMovement({
+        product: { connect: { id: productId } },
+        change: -dto.quantity,
+        reason: dto.reason ?? 'Reserved inventory',
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
@@ -117,26 +94,19 @@ export class CatalogService {
 
   async restockProduct(productId: number, dto: RestockProductDto) {
     return this.lock.withLock(`inventory:${productId}`, async () => {
-      const product = await this.prisma.product.findFirst({
-        where: { id: productId, deletedAt: null },
-      });
+      const product = await this.repo.findProductById(productId);
       if (!product) throw new NotFoundException('Product not found');
 
       const newStock = product.stock + dto.quantity;
-      const updated = await this.prisma.product.update({
-        where: { id: productId },
-        data: { 
-          stock: newStock,
-          status: newStock > 0 ? ProductStatus.AVAILABLE : ProductStatus.OUT_OF_STOCK,
-        },
+      const updated = await this.repo.updateProduct(productId, { 
+        stock: newStock,
+        status: newStock > 0 ? ProductStatus.AVAILABLE : ProductStatus.OUT_OF_STOCK,
       });
 
-      await this.prisma.stockMovement.create({
-        data: {
-          productId,
-          change: dto.quantity,
-          reason: dto.reason,
-        },
+      await this.repo.createStockMovement({
+        product: { connect: { id: productId } },
+        change: dto.quantity,
+        reason: dto.reason,
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);

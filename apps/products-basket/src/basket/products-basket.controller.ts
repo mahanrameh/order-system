@@ -20,7 +20,7 @@ import { AddToBasketDto, UpdateQuantityDto } from '../dto/basket.dto';
 
 @ApiTags('basket')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard) // protect all basket routes by default
+@UseGuards(JwtAuthGuard) 
 @Controller('basket')
 export class ProductsBasketController {
   constructor(private readonly basketService: ProductsBasketService) {}
@@ -52,11 +52,6 @@ export class ProductsBasketController {
     return this.basketService.getBasket(req.user.id);
   }
 
-  @Post('finalize')
-  async finalizeBasket(@Req() req) {
-    return this.basketService.finalizeBasket(req.user.id);
-  }
-
   @Delete(':userId')
   @Roles(Role.ADMIN)
   @UseGuards(RolesGuard)
@@ -64,10 +59,4 @@ export class ProductsBasketController {
     return this.basketService.deleteBasket(Number(userId));
   }
 
-  @Get('all')
-  @Roles(Role.ADMIN)
-  @UseGuards(RolesGuard)
-  async listBaskets() {
-    return this.basketService.listBaskets();
-  }
 }

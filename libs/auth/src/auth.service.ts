@@ -14,7 +14,7 @@ export class AuthService {
 
     createAccessToken(payload: AccessTokenPayload) {
         const token = this.jwtService.sign(payload, {
-            secret: process.env.ACCESS_TOKEN_SECRET_KEY,
+            secret: process.env.COOKIE_SECRET,
             expiresIn: '1d' //! In production this time should be much lower
         })
         
@@ -24,7 +24,7 @@ export class AuthService {
     verifyAccessToken(token: string): AccessTokenPayload {
     try {
         return this.jwtService.verify<AccessTokenPayload>(token, {
-        secret: process.env.ACCESS_TOKEN_SECRET_KEY,
+        secret: process.env.COOKIE_SECRET,
         });
     } catch (err) {
         throw new UnauthorizedException('Invalid access token');

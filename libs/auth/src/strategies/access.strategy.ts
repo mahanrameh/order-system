@@ -15,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: process.env.ACCESS_TOKEN_SECRET_KEY || 'defaultSecret',
+      secretOrKey: process.env.COOKIE_SECRET || 'defaultSecret',
       ignoreExpiration: false,
       passReqToCallback: true,
     } as StrategyOptionsWithRequest);
@@ -25,19 +25,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
   async validate(req: Request, payload: AccessTokenPayload) {
     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+    console.log(token);
     if (!token) throw new UnauthorizedException('Access token missing');
 
     try {
       const verified = this.tokenService.verifyAccessToken(token);
-      (req as any).rawAccessToken = token;
-
       console.log('Payload:', payload);
-      console.log('Verified:', verified);
-      return {
-        sub: verified.sub,  
-        email: verified.email,
-        role: verified.role,
-      };
+      return { sub: payload.sub, email: payload.email, role: payload.role };
     } catch (err) {
       console.error('JWT validation failed:', err.message);
       throw new UnauthorizedException('Invalid access token');

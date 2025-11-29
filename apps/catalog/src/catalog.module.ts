@@ -3,7 +3,8 @@ import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 import { PrismaModule } from 'libs/prisma';
 import { RedisModule } from 'libs/redis/redis.module';
-import { AuthModule } from '@app/auth'; // 👈 shared auth module
+import { AuthModule } from '@app/auth'; 
+import { CatalogRepository } from './repositories/catalog.repository';
 
 @Module({
   imports: [
@@ -12,6 +13,6 @@ import { AuthModule } from '@app/auth'; // 👈 shared auth module
     AuthModule, 
   ],
   controllers: [CatalogController],
-  providers: [CatalogService],
+  providers: [CatalogService, CatalogRepository],
 })
 export class CatalogModule {}

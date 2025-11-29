@@ -1,34 +1,28 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'libs/prisma';
 import { RedisCacheService } from '../../../../libs/redis/redis-cache.service';
-import { ProductStatus, ProductCategory } from 'libs/prisma/generated'; 
+import { ProductRepository } from '../repositories/product.repository';
 
 @Injectable()
 export class ProductsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly productRepo: ProductRepository,
     private readonly cache: RedisCacheService,
   ) {}
 
   async getProduct(id: number) {
     const key = `product:${id}`;
     return this.getOrSetCache(key, async () => {
-      const product = await this.prisma.product.findFirst({
-        where: this.availableFilter({ id }),
-      });
+      const product = await this.productRepo.findById(id);
       if (!product) throw new NotFoundException('Product not found or unavailable');
-      return product;
+      return {
+        ...product,
+        finalPrice: this.getFinalPrice(product),
+      };
     });
   }
 
   async listProducts(skip: number, take: number) {
-    const products = await this.prisma.product.findMany({
-      where: { status: ProductStatus.AVAILABLE, deletedAt: null },
-      skip,
-      take,
-      orderBy: { createdAt: 'desc' },
-    });
-
+    const products = await this.productRepo.findMany(skip, take);
     return products.map(p => ({
       ...p,
       finalPrice: this.getFinalPrice(p),
@@ -36,55 +30,41 @@ export class ProductsService {
   }
 
   async countProducts() {
-    return this.prisma.product.count({
-      where: { status: 'AVAILABLE', deletedAt: null },
-    });
+    return this.productRepo.countAvailable();
   }
 
-  async getProductsByCategory(category: ProductCategory) {
-    const key = `products:category:${category}`;
-    return this.getOrSetCache(key, async () => {
-      const products = await this.prisma.product.findMany({
-        where: this.availableFilter({ category }),
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!products.length) throw new NotFoundException(`No products found in category ${category}`);
+  async getProductsByFilter(
+    skip: number,
+    take: number,
+    filters?: {
+      category?: any;
+      nameQuery?: string;
+      minPrice?: number;
+      maxPrice?: number;
+    },
+  ) {
+    const { category, nameQuery, minPrice, maxPrice } = filters || {};
 
-      return products.map(p => ({
-        ...p,
-        finalPrice: this.getFinalPrice(p),
+    const keyParts = [
+      'products',
+      category && `category:${category}`,
+      nameQuery && `search:${nameQuery.toLowerCase()}`,
+      minPrice !== undefined && maxPrice !== undefined && `price:${minPrice}-${maxPrice}`,
+      `skip:${skip}`,
+      `take:${take}`,
+    ].filter(Boolean);
+    const cacheKey = keyParts.join(':');
+
+    return this.getOrSetCache(cacheKey, async () => {
+      const products = await this.productRepo.findByFilter(skip, take, filters);
+      if (!products.length) {
+        throw new NotFoundException('No products found with given filters');
+      }
+      return products.map(product => ({
+        ...product,
+        finalPrice: this.getFinalPrice(product),
       }));
     });
-  }
-
-  async searchProductsByName(query: string) {
-    const key = `products:search:${query.toLowerCase()}`;
-    return this.getOrSetCache(key, async () => {
-      return this.prisma.product.findMany({
-        where: this.availableFilter({
-          name: { contains: query, mode: 'insensitive' },
-        }),
-        orderBy: { createdAt: 'desc' },
-      });
-    });
-  }
-
-  async getProductsByPriceRange(min: number, max: number) {
-    const key = `products:price:${min}-${max}`;
-    return this.getOrSetCache(key, async () => {
-      return this.prisma.product.findMany({
-        where: this.availableFilter({
-          price: { gte: min, lte: max },
-        }),
-        orderBy: { price: 'asc' },
-      });
-    });
-  }
-
-
-
-  private availableFilter(extra?: object) {
-    return { status: ProductStatus.AVAILABLE, deletedAt: null, ...extra };
   }
 
   private async getOrSetCache<T>(key: string, fetchFn: () => Promise<T>, ttl = 300): Promise<T> {
@@ -95,7 +75,7 @@ export class ProductsService {
     return fresh;
   }
 
-  private getFinalPrice(product: { price: number; discount?: number }): number {
+  private getFinalPrice(product: { price: number; discount?: number | null }): number {
     const discount = product.discount ?? 0;
     return product.price * (1 - discount);
   }

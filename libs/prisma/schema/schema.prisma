@@ -138,12 +138,12 @@ model OrderItem {
 }
 
 model StockMovement {
-  id        Int       @id @default(autoincrement())
+  id        Int                 @id @default(autoincrement())
   productId Int
   change    Int
-  reason    String
-  product   Product   @relation(fields: [productId], references: [id])
-  createdAt DateTime  @default(now())
+  reason    StockMovementReason
+  product   Product             @relation(fields: [productId], references: [id])
+  createdAt DateTime            @default(now())
   deletedAt DateTime?
 
   @@map("stock_movements")
@@ -220,4 +220,12 @@ enum PaymentStatus {
 enum NotificationType {
   SMS
   EMAIL
+}
+
+enum StockMovementReason {
+  ORDER_PLACED
+  ORDER_CANCELLED
+  STOCK_ADJUSTMENT
+  RETURNED_ITEM
+  INVENTORY_AUDIT
 }

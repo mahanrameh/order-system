@@ -29,53 +29,34 @@ export class ProductsController {
     };
   }
 
-  @Get('category/:category')
-  @Pagination()
-  async getProductsByCategory(
-    @Param('category') category: ProductCategory,
-    @Query() paginationDto: PaginationDto,
-  ) {
-    const { skip, limit, page } = paginationSolver(paginationDto);
-
-    const products = await this.productService.listProducts(skip, limit);
-    const filtered = products.filter(p => p.category === category);
-
-    return {
-      pagination: paginationGenerator(filtered.length, page, limit),
-      products: filtered,
-    };
-  }
-
+  
   @Get('search')
   @Pagination()
   async searchProducts(
-    @Query('q') query: string,
     @Query() paginationDto: PaginationDto,
+    @Query('category') category?: ProductCategory,
+    @Query('query') query?: string,
+    @Query('minPrice') minPrice?: number,
+    @Query('maxPrice') maxPrice?: number,
   ) {
     const { skip, limit, page } = paginationSolver(paginationDto);
-    const products = await this.productService.searchProductsByName(query);
 
-    const paginated = products.slice(skip, skip + limit);
+    const filters = {
+      category,
+      nameQuery: query,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+    };
+
+    const products = await this.productService.getProductsByFilter(skip, limit, filters);
+    const count = await this.productService.countProducts();
+
     return {
-      pagination: paginationGenerator(products.length, page, limit),
-      products: paginated,
+      pagination: paginationGenerator(count, page, limit),
+      products,
     };
   }
+
+
    
-  @Get('price-range')
-  @Pagination()
-  async getProductsByPriceRange(
-    @Query('min') min: number,
-    @Query('max') max: number,
-    @Query() paginationDto: PaginationDto,
-  ) {
-    const { skip, limit, page } = paginationSolver(paginationDto);
-    const products = await this.productService.getProductsByPriceRange(Number(min), Number(max));
-
-    const paginated = products.slice(skip, skip + limit);
-    return {
-      pagination: paginationGenerator(products.length, page, limit),
-      products: paginated,
-    };
-  }
 }

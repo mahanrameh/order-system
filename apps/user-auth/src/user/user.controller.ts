@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { Pagination } from 'libs/common/src/decorators/pagination.decorator';
 import { PaginationDto } from 'libs/common/src/dtos/pagination.dto';
@@ -21,6 +21,7 @@ import { Role } from 'libs/common/src/enums/role.enum';
 import { CurrentUser } from 'libs/common/src/decorators/user.decorator';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 
+@ApiBearerAuth('bearer')
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}

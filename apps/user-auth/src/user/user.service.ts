@@ -4,7 +4,6 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import { PrismaService } from 'libs/prisma';
 import { UpdateUserDto } from '../dto/user.dto';
 import { PaginationDto } from 'libs/common/src/dtos/pagination.dto';
 import {
@@ -18,30 +17,22 @@ import {
   ConflictMessage,
 } from 'libs/common/src/enums/message.enum';
 import * as bcrypt from 'bcrypt';
+import { UserRepository } from '../repositories/user.repository';
 
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly userRepo: UserRepository) {}
 
   async getUsers(dto: PaginationDto) {
     const { limit, page, skip } = paginationSolver(dto);
-    const users = await this.prisma.user.findMany({
-      skip,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      where: { deletedAt: null }, 
-    });
-    const count = await this.prisma.user.count({
-      where: { deletedAt: null }, 
-    });
+    const users = await this.userRepo.findMany(skip, limit);
+    const count = await this.userRepo.countAll();
 
     return { pagination: paginationGenerator(count, page, limit), users };
   }
 
   async getUserById(id: number) {
-    const user = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null },
-    });
+    const user = await this.userRepo.findById(id);
     if (!user) throw new NotFoundException(NotFoundMessage.NotFoundUser);
     return user;
   }
@@ -51,9 +42,7 @@ export class UserService {
     const email = dto.email ? dto.email.trim().toLowerCase() : undefined;
     const phone = dto.phone ? dto.phone.trim() : undefined;
 
-    const existingEmail = email
-      ? await this.prisma.user.findFirst({ where: { email, deletedAt: null } }) 
-      : null;
+    const existingEmail = email ? await this.userRepo.findByEmail(email) : null;
     if (existingEmail && existingEmail.id !== userId) {
       throw new ConflictException(ConflictMessage.EmailAlreadyExists);
     }
@@ -64,14 +53,11 @@ export class UserService {
         hashedPassword = await bcrypt.hash(dto.password, 12);
       }
 
-      const user = await this.prisma.user.update({
-        where: { id: userId },
-        data: {
-          ...(username && { username }),
-          ...(email && { email }),
-          ...(phone && { phone }),
-          ...(hashedPassword && { password: hashedPassword }),
-        },
+      const user = await this.userRepo.updateUser(userId, {
+        ...(username && { username }),
+        ...(email && { email }),
+        ...(phone && { phone }),
+        ...(hashedPassword && { password: hashedPassword }),
       });
 
       return {
@@ -91,65 +77,33 @@ export class UserService {
   }
 
   async changeUserRole(id: number) {
-    const user = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null }, 
-    });
+    const user = await this.userRepo.findById(id);
     if (!user) throw new NotFoundException(NotFoundMessage.NotFoundUser);
 
     if (user.role === 'ADMIN') {
       return {
         message: PublicMessage.Updated,
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-        },
+        user,
       };
     }
 
-    const newUser = await this.prisma.user.update({
-      where: { id },
-      data: { role: 'ADMIN' },
-    });
+    const newUser = await this.userRepo.changeRole(id, 'ADMIN');
 
     return {
       message: PublicMessage.Updated,
-      user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-        phone: newUser.phone,
-        role: newUser.role,
-      },
+      user: newUser,
     };
   }
 
   async deleteUser(id: number) {
-    try {
-      const existing = await this.prisma.user.findFirst({
-        where: { id, deletedAt: null }, 
-      });
-      if (!existing) throw new NotFoundException(NotFoundMessage.NotFoundUser);
+    const existing = await this.userRepo.findById(id);
+    if (!existing) throw new NotFoundException(NotFoundMessage.NotFoundUser);
 
-      const user = await this.prisma.user.update({
-        where: { id },
-        data: { deletedAt: new Date() },
-      });
+    const user = await this.userRepo.softDelete(id);
 
-      return {
-        message: PublicMessage.Deleted,
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-        },
-      };
-    } catch (err) {
-      throw new NotFoundException(NotFoundMessage.NotFoundUser);
-    }
+    return {
+      message: PublicMessage.Deleted,
+      user,
+    };
   }
 }

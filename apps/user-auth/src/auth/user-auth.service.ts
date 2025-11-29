@@ -4,9 +4,7 @@ import {
   UnauthorizedException,
   ConflictException,
   NotFoundException,
-  Inject,
 } from '@nestjs/common';
-import { PrismaService } from 'libs/prisma';
 import { AuthRegisterDto, AuthLoginDto } from '../dto/user.dto';
 import {
   AuthMessage,
@@ -18,66 +16,59 @@ import {
 import * as bcrypt from 'bcrypt';
 import { v4 as uuid } from 'uuid';
 import { createHash, randomBytes } from 'crypto';
-import type { Request, Response } from 'express';
-import { CookieKeys } from 'libs/common/src/enums/cookie.enum';
 import { AuthService as TokenService } from '@app/auth';
-import { CreateOtpDto, VerifyOtpDto } from 'libs/common/src/dtos/otp.dto';
-import { REQUEST } from '@nestjs/core';
+import { VerifyOtpDto } from 'libs/common/src/dtos/otp.dto';
+import { UserAuthRepository } from '../repositories/user-auth.repository';
+import { RefreshTokenRepository } from '../repositories/refresh-token.repository';
+import { OtpRepository } from '../repositories/otp.repository';
+
+const REFRESH_TOKEN_EXPIRY_MS = 1000 * 60 * 60 * 24 * 30; 
+const OTP_EXPIRY_MS = 2 * 60 * 1000; 
 
 @Injectable()
 export class UserAuthService {
   constructor(
-    @Inject(REQUEST) private request: Request,
-    private readonly prisma: PrismaService,
-    private tokenService: TokenService,
+    private readonly userRepo: UserAuthRepository,
+    private readonly refreshRepo: RefreshTokenRepository,
+    private readonly otpRepo: OtpRepository,
+    private readonly tokenService: TokenService,
   ) {}
 
   async register(dto: AuthRegisterDto) {
-    const username = dto.username?.trim().toLowerCase();
+    const username = this.normalizeUsername(dto.username);
     const email = dto.email.trim().toLowerCase();
-    const phone = dto.phone?.trim();
+    const phone: string | null = dto.phone ? dto.phone.trim() : null;
 
     if (!username || !dto.password) {
       throw new BadRequestException(BadRequestMessage.InValidRegisterData);
     }
 
-    await this.ensureUniqueFields(email, phone);
+    await this.ensureUniqueFields(email, phone ?? undefined);
 
-    try {
-      const hashedPassword = await bcrypt.hash(dto.password, 12);
+    const hashedPassword = await bcrypt.hash(dto.password, 12);
 
-      const user = await this.prisma.user.create({
-        data: {
-          username,
-          email,
-          phone,
-          password: hashedPassword,
-          basket: {
-            create: {},
-          },
-        },
-        include: { basket: true }, 
-      });
+    const user = await this.userRepo.createUser({
+      username,
+      email,
+      phone,
+      password: hashedPassword,
+      basket: { create: {} },
+    });
 
-      return {
-        message: PublicMessage.Created,
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          basketId: user.basket?.id,
-        },
-      };
-    } catch (err) {
-      console.error('Registration failed:', err);
-      throw new BadRequestException(AuthMessage.TryAgain);
-    }
+    return {
+      message: PublicMessage.Created,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        basketId: user.basket?.id,
+      },
+    };
   }
 
-
-  async login(dto: AuthLoginDto, res: Response) {
+  async login(dto: AuthLoginDto) {
     const email = dto.email?.trim();
     const password = dto.password;
 
@@ -85,7 +76,7 @@ export class UserAuthService {
       throw new BadRequestException(BadRequestMessage.InValidLoginData);
     }
 
-    const user = await this.prisma.user.findUnique({ where: { email, deletedAt: null } });
+    const user = await this.userRepo.findByEmail(email);
     if (!user || !user.password) {
       throw new UnauthorizedException(AuthMessage.InvalidCredentials);
     }
@@ -102,62 +93,42 @@ export class UserAuthService {
     const rawRefreshToken = randomBytes(32).toString('base64url');
     const hashedRefreshToken = createHash('sha256').update(rawRefreshToken).digest('hex');
 
-    await this.prisma.refreshToken.create({
-      data: {
-        tokenId,
-        tokenHash: hashedRefreshToken,
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
-      },
-    });
-
-    res.cookie(CookieKeys.REFRESH, rawRefreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      expires: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    await this.refreshRepo.createToken({
+      tokenId,
+      tokenHash: hashedRefreshToken,
+      user: { connect: { id: user.id } },
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS),
+      isRevoked: false,
     });
 
     return {
       message: PublicMessage.LoggedIn,
       accessToken,
+      refreshToken: rawRefreshToken, 
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
         phone: user.phone,
         role: user.role,
+        basketId: user.basket?.id,
       },
     };
   }
 
-  async refreshToken(req: Request, res: Response) {
-    const refreshToken = req.cookies[CookieKeys.REFRESH];
+  async refreshToken(refreshToken: string) {
     if (!refreshToken) {
-      throw new UnauthorizedException(AuthMessage.RefreshTokenMissing);
+      throw new BadRequestException(AuthMessage.RefreshTokenMissing);
     }
 
     const hashed = createHash('sha256').update(refreshToken).digest('hex');
-    const stored = await this.prisma.refreshToken.findFirst({
-      where: {
-        tokenHash: hashed,
-        isRevoked: false,
-        deletedAt: null, 
-      },
-      include: {
-        user: true, 
-      },
-    });
+    const stored = await this.refreshRepo.findByHash(hashed);
 
     if (!stored || !stored.user || stored.expiresAt < new Date()) {
       throw new UnauthorizedException(AuthMessage.InvalidOrExpiredRefreshToken);
     }
 
-    const payload = {
-      sub: stored.user.id,
-      email: stored.user.email,
-      role: stored.user.role,
-    };
+    const payload = { sub: stored.user.id, email: stored.user.email, role: stored.user.role };
     const newAccessToken = this.tokenService.createAccessToken(payload);
 
     return {
@@ -172,104 +143,89 @@ export class UserAuthService {
     };
   }
 
-  async revokeRefreshToken(req: Request, res: Response) {
-    const refreshToken = req.cookies[CookieKeys.REFRESH];
+  async revokeRefreshToken(refreshToken: string) {
     if (!refreshToken) {
-      throw new UnauthorizedException(AuthMessage.RefreshTokenMissing);
+      throw new BadRequestException(AuthMessage.RefreshTokenMissing);
     }
 
     const hashed = createHash('sha256').update(refreshToken).digest('hex');
-    const stored = await this.findRefreshToken(hashed);
+    const stored = await this.refreshRepo.findByHash(hashed);
 
     if (!stored) {
       throw new NotFoundException(NotFoundMessage.NotFoundRefreshToken);
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { isRevoked: true, deletedAt: new Date() }, 
-    });
-
-    res.clearCookie(CookieKeys.REFRESH);
+    await this.refreshRepo.revokeToken(stored.id);
 
     return { message: PublicMessage.Deleted };
   }
 
-  async sendOtp(res: Response, userId: number, phoneNumber: string) {
+  async sendOtp(userId: number, phoneNumber: string) {
     const otp = this.tokenService.createOtpToken();
-    const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     await this.saveOtp(userId, phoneNumber, otp, expiresAt);
 
-    res.cookie(CookieKeys.OTP, otp, {
-      httpOnly: true,
-      expires: expiresAt,
-    }); //! For testing in development only
-
-    res.json({
+    return {
       message: PublicMessage.SentOtp,
-      otp, //! Remove in production
-    });
+      otp, //! return for dev/testing only, remove in production
+      expiresAt,
+    };
   }
 
   async saveOtp(userId: number, phoneNumber: string, code: string, expiresAt: Date) {
-    const existingOtp = await this.prisma.otp.findFirst({
-      where: { userId, deletedAt: null  },
-    });
+    const existingOtp = await this.otpRepo.findByUser(userId);
 
     if (existingOtp) {
-      await this.prisma.otp.update({
-        where: { id: existingOtp.id },
-        data: { code, expiredAt: expiresAt, isVerified: false, phoneNumber },
+      await this.otpRepo.updateOtp(existingOtp.id, {
+        code,
+        expiredAt: expiresAt,
+        isVerified: false,
+        phoneNumber,
       });
     } else {
-      await this.prisma.otp.create({
-        data: {
-          userId,
-          phoneNumber,
-          code,
-          expiredAt: expiresAt,
-        },
+      await this.otpRepo.createOtp({
+        user: { connect: { id: userId } },
+        phoneNumber,
+        code,
+        expiredAt: expiresAt,
+        isVerified: false,
       });
     }
   }
 
   async checkOtp(dto: VerifyOtpDto) {
-    const isVerified = await this.tokenService.verifyOtpToken(dto.phoneNumber, dto.code);
+    const otp = await this.otpRepo.findByUserPhone(dto.phoneNumber);
+    if (!otp || otp.expiredAt < new Date()) {
+      throw new UnauthorizedException(AuthMessage.OtpVerificationFailed);
+    }
 
+    const isVerified = await this.tokenService.verifyOtpToken(dto.phoneNumber, dto.code);
     if (!isVerified) {
       throw new UnauthorizedException(AuthMessage.OtpVerificationFailed);
     }
 
-    return {
-      message: PublicMessage.OtpVerified,
-    };
+    await this.otpRepo.markVerified(otp.id);
+
+    return { message: PublicMessage.OtpVerified };
   }
 
-  async findRefreshToken(token: string) {
-    const validRefreshToken = await this.prisma.refreshToken.findFirst({
-      where: { tokenHash: token, isRevoked: false },
-      include: { user: true },
-    });
-    if (!validRefreshToken) {
-      throw new NotFoundException(NotFoundMessage.NotFoundRefreshToken);
-    }
-    return validRefreshToken;
-  }
+
+
 
   private async ensureUniqueFields(email?: string, phone?: string) {
     if (email) {
-      const byEmail = await this.prisma.user.findUnique({ where: { email, deletedAt: null  } });
+      const byEmail = await this.userRepo.findByEmail(email);
       if (byEmail) throw new ConflictException(ConflictMessage.EmailAlreadyExists);
     }
     if (phone) {
-      const byPhone = await this.prisma.user.findUnique({ where: { phone, deletedAt: null  } });
+      const byPhone = await this.userRepo.findByPhone(phone);
       if (byPhone) throw new ConflictException(ConflictMessage.PhoneAlreadyExists);
     }
     return true;
   }
 
-  normalizeUsername(username: string) {
+  private normalizeUsername(username: string) {
     return username?.trim().toLowerCase();
   }
 }

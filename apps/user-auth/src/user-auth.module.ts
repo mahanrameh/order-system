@@ -7,6 +7,10 @@ import { PrismaModule } from 'libs/prisma';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from '@app/auth'; 
 import jwtConfig from '@app/auth/configs/jwt.config';
+import { UserAuthRepository } from './repositories/user-auth.repository';
+import { UserRepository } from './repositories/user.repository';
+import { OtpRepository } from './repositories/otp.repository';
+import { RefreshTokenRepository } from './repositories/refresh-token.repository';
 
 @Module({
   imports: [
@@ -15,7 +19,14 @@ import jwtConfig from '@app/auth/configs/jwt.config';
     AuthModule, 
   ],
   controllers: [UserAuthController, UserController],
-  providers: [UserAuthService, UserService],
+  providers: [
+    UserAuthService, 
+    UserService,
+    UserAuthRepository,
+    UserRepository,
+    OtpRepository,
+    RefreshTokenRepository
+  ],
   exports: [UserAuthService],
 })
 export class UserAuthModule {}
