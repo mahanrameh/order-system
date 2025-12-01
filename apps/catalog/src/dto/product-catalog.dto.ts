@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsInt } from 'class-validator';
 import { ProductCategory, ProductStatus } from 'libs/prisma/generated';
+import {Type} from 'class-transformer'
 
 export class CreateProductDto {
   @ApiProperty()
@@ -13,12 +14,14 @@ export class CreateProductDto {
   description?: string;
 
   @ApiProperty()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
   price: number;
 
   @ApiProperty()
-  @IsNumber()
-  stock: number; 
+  @Type(() => Number)
+  @IsInt()
+  stock: number;
 
   @ApiProperty()
   @IsEnum(ProductStatus)
@@ -42,7 +45,8 @@ export class UpdateProductDto {
 
   @ApiProperty()
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
   price?: number;
 
   @ApiProperty()

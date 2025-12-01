@@ -1,31 +1,31 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'libs/prisma';
-import { Product, StockMovement, Prisma } from 'libs/prisma/generated';
+import { Prisma, StockMovement } from 'libs/prisma/generated';
 
 @Injectable()
 export class CatalogRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createProduct(data: Prisma.ProductCreateInput): Promise<Product> {
+  async createProduct(data: Prisma.ProductCreateInput) {
     return this.prisma.product.create({ data });
   }
 
-  async findProductById(id: number): Promise<Product | null> {
-    return this.prisma.product.findFirst({ where: { id, deletedAt: null } });
+  async findProductById(id: number) {
+    return this.prisma.product.findUnique({ where: { id } });
   }
 
-  async updateProduct(id: number, data: Prisma.ProductUpdateInput): Promise<Product> {
+  async updateProduct(id: number, data: Prisma.ProductUpdateInput) {
     return this.prisma.product.update({ where: { id }, data });
   }
 
-  async softDeleteProduct(id: number): Promise<Product> {
+  async softDeleteProduct(id: number) {
     return this.prisma.product.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
   }
 
-  async restoreProduct(id: number): Promise<Product> {
+  async restoreProduct(id: number) {
     return this.prisma.product.update({
       where: { id },
       data: { deletedAt: null },

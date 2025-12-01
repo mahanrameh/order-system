@@ -3,9 +3,10 @@ import { BasketRepository } from 'apps/products-basket/src/repositories/basket.r
 import { ProductRepository } from 'apps/products-basket/src/repositories/product.repository';
 import { OrderRepository } from './repositories/order.repository';
 import { StockMovementRepository } from './repositories/stock-movement.repository';
-import { OrderStatus } from 'libs/prisma/generated';
+import { OrderStatus, StockMovementReason } from 'libs/prisma/generated';
 import { RedisLockService } from 'libs/redis/redis-lock.service';
-import { StockMovementReason } from 'libs/prisma/generated';
+import { RabbitMqService } from 'libs/messaging';
+import { OrderCreatedEvent, OrderCancelledEvent, OrderCompletedEvent, OrderFailedEvent } from 'libs/messaging/events/order.events';
 
 @Injectable()
 export class OrdersService {
@@ -14,7 +15,8 @@ export class OrdersService {
     private readonly productRepo: ProductRepository,
     private readonly orderRepo: OrderRepository,
     private readonly stockRepo: StockMovementRepository,
-    private readonly redisLock: RedisLockService
+    private readonly redisLock: RedisLockService,
+    private readonly events: RabbitMqService,
   ) {}
 
   async createOrder(userId: number, address: string) {
@@ -40,13 +42,20 @@ export class OrdersService {
 
       await this.applyStockMovements(basket.basketItems, StockMovementReason.ORDER_PLACED);
 
+      const event: OrderCreatedEvent = {
+        orderId: order.id,
+        userId: order.userId,
+        totalAmount: order.totalAmount,
+      };
+      await this.events.publish<OrderCreatedEvent>('order.created', event);
+
       return order;
     });
   }
 
   async getOrder(id: number) {
     const order = await this.orderRepo.findById(id);
-    if (!order) throw new NotFoundException('Order not found');
+    if (!order) throw new BadRequestException('Order not found');
     return order;
   }
 
@@ -59,7 +68,31 @@ export class OrdersService {
   }
 
   async updateOrderStatus(orderId: number, status: OrderStatus) {
-    return this.orderRepo.updateStatus(orderId, status);
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) throw new BadRequestException('Order not found');
+    if (order.status === status) return order;
+
+    const updated = await this.orderRepo.updateStatus(orderId, status);
+
+
+    if (status === OrderStatus.COMPLETED) {
+      const event: OrderCompletedEvent = {
+        orderId: updated.id,
+        userId: updated.userId,
+        totalAmount: updated.totalAmount,
+      };
+      await this.events.publish<OrderCompletedEvent>('order.completed', event);
+    } else if (status === OrderStatus.FAILED) {
+      const event: OrderFailedEvent = {
+        orderId: updated.id,
+        userId: updated.userId,
+        totalAmount: updated.totalAmount,
+        reason: 'Payment failed',
+      };
+      await this.events.publish<OrderFailedEvent>('order.failed', event);
+    }
+
+    return updated;
   }
 
   async cancelOrder(orderId: number) {
@@ -71,14 +104,43 @@ export class OrdersService {
 
     await this.applyStockMovements(order.orderItems, StockMovementReason.ORDER_CANCELLED);
 
-    return this.orderRepo.updateStatus(orderId, OrderStatus.CANCELLED);
+    const updated = await this.orderRepo.updateStatus(orderId, OrderStatus.CANCELLED);
+
+    const event: OrderCancelledEvent = {
+      orderId: updated.id,
+      userId: updated.userId,
+      totalAmount: updated.totalAmount,
+    };
+    await this.events.publish<OrderCancelledEvent>('order.cancelled', event);
+
+    return updated;
   }
 
 
+  async onPaymentCompleted(orderId: number) {
 
+    return this.redisLock.withLock(`order:status:${orderId}`, async () => {
+      const order = await this.orderRepo.findById(orderId);
+      if (!order) throw new BadRequestException('Order not found');
+      if (order.status === OrderStatus.COMPLETED) return order; 
 
+      const updated = await this.orderRepo.updateStatus(orderId, OrderStatus.COMPLETED);
+      return updated;
+    });
+  }
 
+  async onPaymentFailed(orderId: number) {
+    return this.redisLock.withLock(`order:status:${orderId}`, async () => {
+      const order = await this.orderRepo.findById(orderId);
+      if (!order) throw new BadRequestException('Order not found');
+      if (order.status === OrderStatus.FAILED) return order; 
 
+      await this.applyStockMovements(order.orderItems, StockMovementReason.ORDER_CANCELLED);
+
+      const updated = await this.orderRepo.updateStatus(orderId, OrderStatus.FAILED);
+      return updated;
+    });
+  }
 
   private mapBasketItems(basketItems: any[]): { orderItemsData: any[]; totalAmount: number } {
     let totalAmount = 0;
@@ -96,17 +158,17 @@ export class OrdersService {
         this.stockRepo.recordMovement(
           item.productId,
           reason === StockMovementReason.ORDER_PLACED ? -item.quantity : item.quantity,
-          reason
-        )
-      )
+          reason,
+        ),
+      ),
     );
 
     await Promise.all(
       items.map(item =>
         reason === StockMovementReason.ORDER_PLACED
           ? this.productRepo.decrementStock(item.productId, item.quantity)
-          : this.productRepo.incrementStock(item.productId, item.quantity)
-      )
+          : this.productRepo.incrementStock(item.productId, item.quantity),
+      ),
     );
   }
 

@@ -8,6 +8,8 @@ import { RedisLockService } from 'libs/redis/redis-lock.service';
 import { ProductsBasketModule } from 'apps/products-basket/src/products-basket.module';
 import { OrderRepository } from './repositories/order.repository';
 import { StockMovementRepository } from './repositories/stock-movement.repository';
+import { MessagingModule } from 'libs/messaging';
+import { PaymentEventsConsumer } from './payment.events.consumer';
 
 @Module({
   imports: [
@@ -15,12 +17,13 @@ import { StockMovementRepository } from './repositories/stock-movement.repositor
     AuthModule,
     RedisModule,
     ProductsBasketModule,
+    MessagingModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, PaymentEventsConsumer],
   providers: [
-    OrdersService, 
+    OrdersService,
     RedisLockService,
-    OrderRepository, 
+    OrderRepository,
     StockMovementRepository,
   ],
   exports: [OrdersService],

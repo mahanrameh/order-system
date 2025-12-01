@@ -20,7 +20,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       passReqToCallback: true,
     } as StrategyOptionsWithRequest);
 
-    console.log('JwtStrategy initialized');
   }
 
   async validate(req: Request, payload: AccessTokenPayload) {

@@ -7,7 +7,7 @@ import {
   ReserveInventoryDto, 
   RestockProductDto 
 } from './dto/product-catalog.dto';
-import { ProductStatus } from 'libs/prisma/generated';
+import { ProductStatus, StockMovementReason } from 'libs/prisma/generated';
 import { CatalogRepository } from './repositories/catalog.repository';
 
 @Injectable()
@@ -25,7 +25,7 @@ export class CatalogService {
       await this.repo.createStockMovement({
         product: { connect: { id: product.id } },
         change: dto.stock,
-        reason: 'Initial stock',
+        reason: StockMovementReason.INITIAL_STOCK,
       });
     }
 
@@ -39,7 +39,6 @@ export class CatalogService {
       if (!existing) throw new NotFoundException('Product not found');
 
       const updated = await this.repo.updateProduct(id, dto);
-
       await this.cache.set(`product:${id}`, updated, 300);
       return updated;
     });
@@ -51,7 +50,6 @@ export class CatalogService {
       if (!existing) throw new NotFoundException('Product not found');
 
       const deleted = await this.repo.softDeleteProduct(id);
-
       await this.cache.del(`product:${id}`);
       return deleted;
     });
@@ -62,7 +60,6 @@ export class CatalogService {
     if (!product) throw new NotFoundException('Product not found');
 
     const restored = await this.repo.restoreProduct(id);
-
     await this.cache.set(`product:${id}`, restored, 300);
     return restored;
   }
@@ -84,7 +81,7 @@ export class CatalogService {
       await this.repo.createStockMovement({
         product: { connect: { id: productId } },
         change: -dto.quantity,
-        reason: dto.reason ?? 'Reserved inventory',
+        reason: StockMovementReason.ORDER_PLACED,
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
@@ -106,7 +103,7 @@ export class CatalogService {
       await this.repo.createStockMovement({
         product: { connect: { id: productId } },
         change: dto.quantity,
-        reason: dto.reason,
+        reason: StockMovementReason.STOCK_ADJUSTMENT,
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
