@@ -1,18 +1,21 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, NotAcceptableException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { AccessTokenPayload, RefreshTokenPayload } from "./types/payload";
+import { AccessTokenPayload } from "./types/payload";
+import { PrismaService } from "libs/prisma";
+import { AuthMessage, NotFoundMessage } from "libs/common/src/enums/message.enum";
 
 
 @Injectable()
 export class AuthService {
     constructor(
-        private jwtService: JwtService
+        private jwtService: JwtService,
+        private prisma: PrismaService
     ){}
 
     createAccessToken(payload: AccessTokenPayload) {
         const token = this.jwtService.sign(payload, {
-            secret: process.env.ACCESS_TOKEN_SECRET_KEY,
-            expiresIn: '1d'
+            secret: process.env.COOKIE_SECRET,
+            expiresIn: '1d' //! In production this time should be much lower
         })
         
         return token;
@@ -21,29 +24,47 @@ export class AuthService {
     verifyAccessToken(token: string): AccessTokenPayload {
     try {
         return this.jwtService.verify<AccessTokenPayload>(token, {
-        secret: process.env.ACCESS_TOKEN_SECRET_KEY,
+        secret: process.env.COOKIE_SECRET,
         });
     } catch (err) {
         throw new UnauthorizedException('Invalid access token');
     }
     }
 
+    createOtpToken(): string {
+    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit
+    }
 
-    createRefreshToken(payload: RefreshTokenPayload) {
-    const token = this.jwtService.sign(payload, {
-        secret: process.env.REFRESH_TOKEN_SECRET_KEY,
-        expiresIn: '30d',
+    async verifyOtpToken(phoneNumber: string, code: string): Promise<boolean> {
+    const otpRecord = await this.prisma.client.otp.findFirst({
+        where: {
+        phoneNumber,
+        code,
+        },
     });
-    return token;
+
+    if (!otpRecord) {
+        throw new NotAcceptableException(NotFoundMessage.NotFound);
     }
 
-    verifyRefreshToken(token: string): RefreshTokenPayload {
-    try {
-        return this.jwtService.verify<RefreshTokenPayload>(token, {
-        secret: process.env.REFRESH_TOKEN_SECRET_KEY,
-        });
-    } catch (err) {
-        throw new UnauthorizedException('Invalid refresh token');
+    if (otpRecord.isVerified) {
+        throw new UnauthorizedException(AuthMessage.AlreadyExistAccount);
     }
+
+    const now = Date.now();
+    const expiredAt = new Date(otpRecord.expiredAt).getTime();
+
+    if (now > expiredAt) {
+        throw new UnauthorizedException(AuthMessage.ExpiredCode);
     }
+
+    await this.prisma.client.otp.update({
+        where: { id: otpRecord.id },
+        data: { isVerified: true },
+    });
+
+    return true;
+    }
+
+
 }

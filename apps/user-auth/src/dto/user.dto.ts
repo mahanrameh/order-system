@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, Length, IsEmail, Matches } from 'class-validator';
+import { IsOptional, IsString, Length, IsEmail, Matches, IsPhoneNumber } from 'class-validator';
 
 export class AuthRegisterDto {
   @ApiProperty()
@@ -7,7 +7,7 @@ export class AuthRegisterDto {
   @Length(3, 50)
   username: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty()
   @IsEmail()
   email: string;
   
@@ -21,6 +21,31 @@ export class AuthRegisterDto {
   
   @ApiProperty({ required: false })
   @IsOptional()
+  @IsPhoneNumber('IR')
+  phone?: string;
+
+}
+
+export class UpdateUserDto {
+  @ApiProperty()
+  @IsString()
+  @IsOptional()
+  @Length(3, 50)
+  username?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+  
+  @ApiProperty()
+  @IsString()
+  @IsOptional()
+  @IsPhoneNumber('IR')
+  password?: string;
+  
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
   @Matches(/^\+?98[0-9]{10}$/, { message: 'phone must be in +98XXXXXXXXXX format' })
   phone?: string;
@@ -29,8 +54,9 @@ export class AuthRegisterDto {
 
 export class AuthLoginDto {
   @ApiProperty({ required: false })
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
   
   @ApiProperty()
   @IsString()

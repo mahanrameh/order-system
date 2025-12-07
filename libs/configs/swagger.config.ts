@@ -7,10 +7,14 @@ export function SwaggerConfigInit(app: INestApplication): void {
     .setTitle('order_system')
     .setDescription('a test project for an order system for internship task')
     .setVersion('v0.0.1')
-    .addBearerAuth(SwaggerAuthConfig(), 'Authorization')
+    .addBearerAuth(SwaggerAuthConfig(), 'bearer')
     .build();
     const swaggerDocument = SwaggerModule.createDocument(app, document);
-    SwaggerModule.setup('/swagger', app, swaggerDocument);
+    SwaggerModule.setup('/swagger', app, swaggerDocument, {
+        swaggerOptions: {
+            persistAuthorization: true,
+        },
+    });
 }
 
 function SwaggerAuthConfig(): SecuritySchemeObject {
