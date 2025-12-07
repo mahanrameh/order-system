@@ -27,4 +27,16 @@ export class FakeIranBankAdapter extends BankAdapter {
     }
     return true;
   }
+
+  async buildSignedWebhook(payload: { gatewayRef: string; status: 'ok' | 'cancel'; timestamp?: number }) {
+    const serialized = JSON.stringify(payload);
+    const signature = crypto.createHmac(this.algo, this.secret).update(serialized).digest('hex');
+
+    return {
+      headers: {
+        'x-gateway-signature': signature,
+      },
+      body: payload,
+    };
+  }
 }

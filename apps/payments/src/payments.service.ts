@@ -56,6 +56,21 @@ export class PaymentsService {
           };
 
           await this.events.publish(topic, payload);
+
+          if (payload.status === PaymentStatus.COMPLETED) {
+            await this.events.notify(
+              payLoad.userId,
+              'EMAIL',
+              `Payment #${payload.paymentId} for order #${payload.orderId} was completed successfully.`,
+            );
+          } else if (payload.status === PaymentStatus.FAILED) {
+            await this.events.notify(
+              payLoad.userId,
+              'EMAIL',
+              `Payment #${payload.paymentId} for order #${payload.orderId} failed. Reason: ${payload.reason ?? 'Unknown'}.`,
+            );
+          }
+
           await this.paymentRepo.markOutboxDispatched(evt.id);
         } catch (err) {
           this.logger.error(
@@ -64,8 +79,8 @@ export class PaymentsService {
           );
         }
       }),
-    ); 
- }
+    );
+  }
 
   async initiatePayment(userId: number, orderId: number, amount: number, currency = 'IRR') {
     if (!Number.isFinite(amount) || amount <= 0) {

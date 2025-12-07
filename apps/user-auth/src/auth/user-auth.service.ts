@@ -21,6 +21,7 @@ import { VerifyOtpDto } from 'libs/common/src/dtos/otp.dto';
 import { UserAuthRepository } from '../repositories/user-auth.repository';
 import { RefreshTokenRepository } from '../repositories/refresh-token.repository';
 import { OtpRepository } from '../repositories/otp.repository';
+import { RabbitMqService } from 'libs/messaging';
 
 const REFRESH_TOKEN_EXPIRY_MS = 1000 * 60 * 60 * 24 * 30; 
 const OTP_EXPIRY_MS = 2 * 60 * 1000; 
@@ -32,6 +33,7 @@ export class UserAuthService {
     private readonly refreshRepo: RefreshTokenRepository,
     private readonly otpRepo: OtpRepository,
     private readonly tokenService: TokenService,
+    private readonly events: RabbitMqService
   ) {}
 
   async register(dto: AuthRegisterDto) {
@@ -54,6 +56,12 @@ export class UserAuthService {
       password: hashedPassword,
       basket: { create: {} },
     });
+
+    await this.events.notify(
+      user.id,
+      'EMAIL',
+      `Welcome ${user.username}! Your account has been created successfully.`
+    );
 
     return {
       message: PublicMessage.Created,
@@ -100,6 +108,12 @@ export class UserAuthService {
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS),
       isRevoked: false,
     });
+
+    await this.events.notify(
+      user.id,
+      'EMAIL',
+      `You have logged in successfully at ${new Date().toLocaleString()}.`
+    );
 
     return {
       message: PublicMessage.LoggedIn,
@@ -157,6 +171,12 @@ export class UserAuthService {
 
     await this.refreshRepo.revokeToken(stored.id);
 
+    await this.events.notify(
+      stored.userId,
+      'EMAIL',
+      `Your refresh token has been revoked.`
+    );
+
     return { message: PublicMessage.Deleted };
   }
 
@@ -165,6 +185,12 @@ export class UserAuthService {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     await this.saveOtp(userId, phoneNumber, otp, expiresAt);
+
+    await this.events.notify(
+      userId,
+      'SMS',
+      `Your OTP code is ${otp}. It expires in 2 minutes.`
+    );
 
     return {
       message: PublicMessage.SentOtp,
@@ -206,6 +232,12 @@ export class UserAuthService {
     }
 
     await this.otpRepo.markVerified(otp.id);
+
+    await this.events.notify(
+      otp.userId,
+      'SMS',
+      `Your phone number ${dto.phoneNumber} has been verified successfully.`
+    );
 
     return { message: PublicMessage.OtpVerified };
   }

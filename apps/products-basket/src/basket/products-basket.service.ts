@@ -3,6 +3,7 @@ import { RedisRateLimiterService } from '../../../../libs/redis/redis-rate-limit
 import { RedisCacheService } from '../../../../libs/redis/redis-cache.service';
 import { CartItem, CartState } from '../types/basket.type';
 import { BasketRepository } from '../repositories/basket.repository';
+import { RabbitMqService } from 'libs/messaging';
 
 const CART_TTL_SECONDS = 6000;
 
@@ -12,6 +13,7 @@ export class ProductsBasketService {
     private readonly basketRepo: BasketRepository,
     private readonly rateLimiter: RedisRateLimiterService,
     private readonly cache: RedisCacheService,
+    private readonly events: RabbitMqService
   ) {}
 
   async addToBasket(userId: number, productId: number, quantity = 1) {
@@ -28,6 +30,12 @@ export class ProductsBasketService {
     await this.basketRepo.createBasketItem(basket.id, productId, quantity);
 
     const cart = await this.buildCartFromDb(basket.id);
+
+    await this.events.notify(
+      userId,
+      'EMAIL',
+      `Product #${productId} added to your basket.`
+    );
     return this.recalculateAndCache(userId, cart);
   }
 
@@ -46,6 +54,13 @@ export class ProductsBasketService {
     await this.basketRepo.updateBasketItemQuantity(item.id, quantity);
 
     const cart = await this.buildCartFromDb(basket.id);
+
+    await this.events.notify(
+      userId,
+      'EMAIL',
+      `Quantity for product #${productId} updated to ${quantity} in your basket.`
+    );
+
     return this.recalculateAndCache(userId, cart);
   }
 
@@ -59,6 +74,13 @@ export class ProductsBasketService {
     await this.basketRepo.softDeleteBasketItem(item.id);
 
     const cart = await this.buildCartFromDb(basket.id);
+
+    await this.events.notify(
+      userId,
+      'EMAIL',
+      `Product #${productId} removed from your basket.`
+    );    
+
     return this.recalculateAndCache(userId, cart);
   }
 
@@ -66,6 +88,13 @@ export class ProductsBasketService {
     const basket = await this.ensureBasket(userId);
     await this.basketRepo.softDeleteAllItems(basket.id);
     await this.cache.del(this.cartKey(userId));
+
+    await this.events.notify(
+      userId,
+      'EMAIL',
+      `Your basket has been cleared.`
+    );
+
     return { message: 'Basket cleared' };
   }
 
@@ -83,6 +112,12 @@ export class ProductsBasketService {
     await this.basketRepo.softDeleteBasket(basket.id);
 
     await this.cache.del(this.cartKey(userId));
+
+    await this.events.notify(
+      userId,
+      'EMAIL',
+      `Your basket has been deleted.`
+    );
 
     return { message: 'Basket deleted' };
   }

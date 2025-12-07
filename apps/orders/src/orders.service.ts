@@ -49,6 +49,12 @@ export class OrdersService {
       };
       await this.events.publish<OrderCreatedEvent>('order.created', event);
 
+      await this.events.notify(
+        order.userId,
+        'EMAIL',
+        `Your order #${order.id} has been created with total ${order.totalAmount}.`
+      );
+
       return order;
     });
   }

@@ -18,10 +18,14 @@ import {
 } from 'libs/common/src/enums/message.enum';
 import * as bcrypt from 'bcrypt';
 import { UserRepository } from '../repositories/user.repository';
+import { RabbitMqService } from 'libs/messaging';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly userRepo: UserRepository) {}
+  constructor(
+    private readonly userRepo: UserRepository,
+    private readonly events: RabbitMqService, 
+  ) {}
 
   async getUsers(dto: PaginationDto) {
     const { limit, page, skip } = paginationSolver(dto);
@@ -60,6 +64,12 @@ export class UserService {
         ...(hashedPassword && { password: hashedPassword }),
       });
 
+      await this.events.notify(
+        user.id,
+        'EMAIL',
+        `Your profile has been updated successfully.`
+      );
+
       return {
         message: PublicMessage.Updated,
         user: {
@@ -89,6 +99,12 @@ export class UserService {
 
     const newUser = await this.userRepo.changeRole(id, 'ADMIN');
 
+    await this.events.notify(
+      newUser.id,
+      'EMAIL',
+      `Your role has been changed to ADMIN.`
+    );
+
     return {
       message: PublicMessage.Updated,
       user: newUser,
@@ -100,6 +116,12 @@ export class UserService {
     if (!existing) throw new NotFoundException(NotFoundMessage.NotFoundUser);
 
     const user = await this.userRepo.softDelete(id);
+
+    await this.events.notify(
+      user.id,
+      'EMAIL',
+      `Your account has been deleted.`
+    );
 
     return {
       message: PublicMessage.Deleted,

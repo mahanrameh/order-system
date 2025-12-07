@@ -9,6 +9,7 @@ import {
 } from './dto/product-catalog.dto';
 import { ProductStatus, StockMovementReason } from 'libs/prisma/generated';
 import { CatalogRepository } from './repositories/catalog.repository';
+import { RabbitMqService } from 'libs/messaging';
 
 @Injectable()
 export class CatalogService {
@@ -16,6 +17,7 @@ export class CatalogService {
     private readonly repo: CatalogRepository,
     private readonly cache: RedisCacheService,
     private readonly lock: RedisLockService,
+    private readonly events: RabbitMqService
   ) {}
 
   async createProduct(dto: CreateProductDto) {
@@ -30,6 +32,13 @@ export class CatalogService {
     }
 
     await this.cache.set(`product:${product.id}`, product, 300);
+
+    await this.events.notify(
+      0,
+      'EMAIL',
+      `Product "${product.name}" has been created with stock ${dto.stock}.`
+    );
+
     return product;
   }
 
@@ -40,6 +49,13 @@ export class CatalogService {
 
       const updated = await this.repo.updateProduct(id, dto);
       await this.cache.set(`product:${id}`, updated, 300);
+
+      await this.events.notify(
+        0,
+        'EMAIL',
+        `Product "${updated.name}" has been updated.`
+      );
+
       return updated;
     });
   }
@@ -51,6 +67,13 @@ export class CatalogService {
 
       const deleted = await this.repo.softDeleteProduct(id);
       await this.cache.del(`product:${id}`);
+
+      await this.events.notify(
+        0,
+        'EMAIL',
+        `Product "${existing.name}" has been deleted.`
+      );
+
       return deleted;
     });
   }
@@ -61,6 +84,13 @@ export class CatalogService {
 
     const restored = await this.repo.restoreProduct(id);
     await this.cache.set(`product:${id}`, restored, 300);
+
+    await this.events.notify(
+      0,
+      'EMAIL',
+      `Product "${restored.name}" has been restored.`
+    );
+
     return restored;
   }
 
@@ -85,6 +115,13 @@ export class CatalogService {
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
+
+      await this.events.notify(
+        0,
+        'EMAIL',
+        `Reserved ${dto.quantity} units of product #${productId}.`
+      );
+
       return updated;
     });
   }
@@ -107,6 +144,13 @@ export class CatalogService {
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
+
+      await this.events.notify(
+        0,
+        'EMAIL',
+        `Product "${updated.name}" has been restocked with ${dto.quantity} units.`
+      );
+
       return updated;
     });
   }

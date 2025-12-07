@@ -1,7 +1,7 @@
 export interface PaymentEventPayload {
   paymentId: number;
   orderId: number;
-  userId?: number;
+  userId: number;
   amount?: number;
   method?: string;
   status?: string;
