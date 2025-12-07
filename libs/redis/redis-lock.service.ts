@@ -13,7 +13,7 @@ export class RedisLockService {
     });
   }
 
-  async withLock(resource: string, fn: () => Promise<any>) {
+  async withLock<T>(resource: string, fn: () => Promise<T>): Promise<T> {
     const lock = await this.redlock.acquire([`locks:${resource}`], 1000);
     try {
       return await fn();
@@ -21,4 +21,5 @@ export class RedisLockService {
       await lock.release();
     }
   }
+
 }

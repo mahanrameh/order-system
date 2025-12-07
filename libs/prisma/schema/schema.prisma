@@ -150,22 +150,32 @@ model StockMovement {
 }
 
 model Payment {
-  id             Int           @id @default(autoincrement())
-  amount         Float
-  method         PaymentMethod
-  status         PaymentStatus @default(PENDING)
-  userId         Int
-  user           User          @relation(fields: [userId], references: [id])
-  orderId        Int           @unique
-  order          Order         @relation(fields: [orderId], references: [id])
-  gatewayRef     String?
-  idempotencyKey String?       @unique
-  redirectUrl    String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  deletedAt      DateTime?
+  id          Int           @id @default(autoincrement())
+  amount      Decimal       @db.Decimal(18, 2)
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id])
+  orderId     Int           @unique
+  order       Order         @relation(fields: [orderId], references: [id])
+  gatewayRef  String?
+  redirectUrl String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
 
   @@map("payments")
+}
+
+model PaymentEventOutbox {
+  id           Int           @id @default(autoincrement())
+  paymentId    Int
+  type         PaymentStatus
+  payload      Json
+  createdAt    DateTime      @default(now())
+  dispatchedAt DateTime?
+
+  @@index([type, dispatchedAt])
 }
 
 model Notification {

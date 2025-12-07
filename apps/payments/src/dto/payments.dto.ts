@@ -1,38 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNumber, Min, IsString, IsEnum } from 'class-validator';
+import { IsInt, IsNumber, Min, IsString, IsEnum, IsOptional, IsIn } from 'class-validator';
 
 export class InitiatePaymentDto {
-  @ApiProperty({ example: 1, description: 'User ID' })
+  @ApiProperty({ example: 1, description: 'User ID initiating the payment' })
   @IsInt()
   userId: number;
 
-  @ApiProperty({ example: 101, description: 'Order ID' })
+  @ApiProperty({ example: 101, description: 'Order ID for which payment is initiated' })
   @IsInt()
   orderId: number;
 
-  @ApiProperty({ example: 250000, description: 'Amount to be paid in IRR' })
+  @ApiProperty({ example: 250000, description: 'Amount to be paid (IRR)' })
   @IsNumber()
   @Min(1)
   amount: number;
-}
-
-export enum GatewayStatus {
-  SUCCESS = 'SUCCESS',
-  FAILED = 'FAILED',
-}
-
-export class PaymentWebhookDto {
-  @ApiProperty({ example: 123, description: 'Payment ID from your system' })
-  @IsInt()
-  paymentId: number;
-
-  @ApiProperty({ example: 'IRBANK_101_1732960000', description: 'Reference returned by fake Iranian gateway' })
-  @IsString()
-  gatewayRef: string;
-
-  @ApiProperty({ enum: GatewayStatus, required: false, description: 'Optional status reported by gateway' })
-  @IsEnum(GatewayStatus)
-  status?: GatewayStatus;
 }
 
 export class VerifyPaymentDto {
@@ -40,3 +21,21 @@ export class VerifyPaymentDto {
   @IsInt()
   paymentId: number;
 }
+
+
+export class GatewayWebhookDto {
+  @ApiProperty({ example: 'IRBANK_101_1732960000', description: 'Reference returned by gateway' })
+  @IsString()
+  gatewayRef: string;
+
+  @ApiProperty({ example: 'ok', enum: ['ok', 'cancel'] })
+  @IsIn(['ok', 'cancel'])
+  status: 'ok' | 'cancel';
+
+  @ApiProperty({ required: false, example: 1732960000 })
+  @IsOptional()
+  @IsInt()
+  timestamp?: number;
+}
+
+

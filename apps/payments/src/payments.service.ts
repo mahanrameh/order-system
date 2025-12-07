@@ -1,45 +1,90 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PaymentRepository } from './repositories/payment.repository';
-import { FakeIranBankAdapter } from './fake-iran-bank.adapter';
+import { BankAdapter, BankVerifyResult } from './adapters/bank.adapter';
 import { PaymentMethod, PaymentStatus } from 'libs/prisma/generated';
 import { RedisLockService } from 'libs/redis/redis-lock.service';
 import { RabbitMqService } from 'libs/messaging';
-import {
-  PaymentPendingEvent,
-  PaymentCompletedEvent,
-  PaymentFailedEvent,
-} from 'libs/messaging/events/payment.events';
+import { RedisCacheService } from 'libs/redis/redis-cache.service';
+import { createHash } from 'crypto';
+import { PaymentEventPayload } from './types/payment-event-payload';
 
 @Injectable()
 export class PaymentsService {
+  private readonly webhookSkewMs = 5 * 60 * 1000;
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly paymentRepo: PaymentRepository,
-    private readonly gateway: FakeIranBankAdapter,
+    private readonly gateway: BankAdapter,
     private readonly events: RabbitMqService,
     private readonly redisLock: RedisLockService,
+    private readonly redisCache: RedisCacheService,
   ) {}
 
-  async initiatePayment(
-    userId: number,
-    orderId: number,
-    amount: number,
-    idempotencyKey: string,
-    currency = 'IRR',
-  ) {
+  private async publishOutbox() {
+    const batch = await this.paymentRepo.fetchUndispatchedOutboxBatch(100);
+
+    const statusToTopic: Record<string, string | null> = {
+      [PaymentStatus.PENDING]: null,
+      [PaymentStatus.COMPLETED]: 'payment.completed',
+      [PaymentStatus.FAILED]: 'payment.failed',
+    };
+
+    await Promise.all(
+      batch.map(async evt => {
+        try {
+          const topic = statusToTopic[evt.type as keyof typeof statusToTopic];
+          if (!topic) {
+            await this.paymentRepo.markOutboxDispatched(evt.id);
+            return;
+          }
+
+          const payLoad = evt.payload as unknown as PaymentEventPayload;
+
+          const payload = {
+            paymentId: payLoad.paymentId,
+            orderId: payLoad.orderId,
+            status: payLoad.status,
+            reason: payLoad.reason,
+          };
+
+          await this.events.publish(topic, payload);
+          await this.paymentRepo.markOutboxDispatched(evt.id);
+        } catch (err) {
+          this.logger.error(
+            `Failed to publish outbox event ${evt.id}`,
+            err?.stack ?? err,
+          );
+        }
+      }),
+    ); 
+ }
+
+  async initiatePayment(userId: number, orderId: number, amount: number, currency = 'IRR') {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Invalid amount');
+    }
+
+    const key = await this.buildIdempotencyKey(userId, orderId);
 
     return this.redisLock.withLock(`payment:init:order:${orderId}`, async () => {
-      if (!idempotencyKey || idempotencyKey.trim().length === 0) {
-        throw new BadRequestException('Missing idempotency key');
-      }
-      if (amount <= 0) {
-        throw new BadRequestException('Invalid amount');
+      const cached = await this.redisCache.get<string>(`payment:idempotency:${key}`);
+      if (cached) {
+        return JSON.parse(cached);
       }
 
-      const existingByOrder = await this.paymentRepo.findByOrderId(orderId);
-      if (existingByOrder) return existingByOrder;
-
-      const existingByKey = await this.paymentRepo.findByIdempotencyKeyAndUser(idempotencyKey, userId);
-      if (existingByKey) return existingByKey;
+      const existing = await this.paymentRepo.findByOrderId(orderId);
+      if (existing) {
+        await this.redisCache.set(`payment:idempotency:${key}`, JSON.stringify(existing), 3600);
+        return existing;
+      }
 
       const { gatewayRef, redirectUrl } = await this.gateway.initiate(amount, currency, orderId);
 
@@ -49,108 +94,67 @@ export class PaymentsService {
         amount,
         method: PaymentMethod.CREDIT_CARD,
         status: PaymentStatus.PENDING,
-        idempotencyKey,
         gatewayRef,
         redirectUrl,
       });
 
-      const event: PaymentPendingEvent = {
-        paymentId: payment.id,
-        orderId: payment.orderId,
-        userId: payment.userId,
-        amount: payment.amount,
-        method: payment.method.toString(), 
-      };
-      await this.events.publish<PaymentPendingEvent>('payment.pending', event);
-
+      await this.redisCache.set(`payment:idempotency:${key}`, JSON.stringify(payment), 3600);
+      await this.publishOutbox();
       return payment;
     });
   }
 
-  async handleWebhook(payload: any, signature: string) {
-    if (!this.gateway.verifySignature(payload, signature)) {
-      throw new BadRequestException('Invalid signature');
-    }
-
-    const { paymentId, gatewayRef } = payload;
-    const payment = await this.paymentRepo.findById(paymentId);
-    if (!payment) throw new NotFoundException('Payment not found');
-
-    return this.redisLock.withLock(`payment:finalize:${payment.id}`, async () => {
+  async verifyPayment(requestorUserId: number | null, paymentId: number) {
+    return this.redisLock.withLock(`payment:verify:${paymentId}`, async () => {
+      const payment = await this.paymentRepo.findById(paymentId);
+      if (!payment) throw new NotFoundException('Payment not found');
+      if (requestorUserId !== null && payment.userId !== requestorUserId) {
+        throw new ForbiddenException('You are not allowed to verify this payment');
+      }
       if (payment.status !== PaymentStatus.PENDING) return payment;
 
-      if (gatewayRef && payment.gatewayRef !== gatewayRef) {
-        throw new BadRequestException('Gateway reference mismatch');
+      let res: BankVerifyResult;
+      try {
+        res = await this.gateway.verify(payment.gatewayRef!);
+      } catch (err) {
+        this.logger.error('Gateway verify failed', (err as Error)?.stack ?? err);
+        throw new InternalServerErrorException('Failed to verify with gateway');
       }
 
-      const verification = await this.gateway.verify(payment.gatewayRef!);
-      const finalStatus =
-        verification.status === 'SUCCESS' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
+      const finalStatus = res.status === 'SUCCESS' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
 
       const updated = await this.paymentRepo.update(payment.id, { status: finalStatus });
-
-      if (finalStatus === PaymentStatus.COMPLETED) {
-        const event: PaymentCompletedEvent = {
-          paymentId: updated.id,
-          orderId: updated.orderId,
-          userId: updated.userId,
-          amount: updated.amount,
-          method: updated.method.toString(),
-        };
-        await this.events.publish<PaymentCompletedEvent>('payment.completed', event);
-      } else {
-        const event: PaymentFailedEvent = {
-          paymentId: updated.id,
-          orderId: updated.orderId,
-          userId: updated.userId,
-          amount: updated.amount,
-          method: updated.method.toString(),
-          reason: 'Verification failed',
-        };
-        await this.events.publish<PaymentFailedEvent>('payment.failed', event);
-      }
-
+      await this.publishOutbox();
       return updated;
     });
   }
 
-  async verifyPayment(paymentId: number, idempotencyKey: string) {
-    return this.redisLock.withLock(`payment:verify:${paymentId}`, async () => {
-      if (!idempotencyKey || idempotencyKey.trim().length === 0) {
-        throw new BadRequestException('Missing idempotency key');
-      }
+  async handleGatewayWebhook(payload: { gatewayRef: string; status: 'ok' | 'cancel'; timestamp?: number }) {
+    const { gatewayRef, status } = payload;
+    if (!gatewayRef) throw new BadRequestException('Missing gatewayRef');
 
-      const payment = await this.paymentRepo.findById(paymentId);
-      if (!payment) throw new NotFoundException('Payment not found');
-      if (payment.status !== PaymentStatus.PENDING) return payment;
+    const payment = await this.paymentRepo.findByGatewayRef(gatewayRef);
+    if (!payment) {
+      this.logger.warn(`Webhook for unknown gatewayRef=${gatewayRef}`);
+      return { ok: true };
+    }
 
-      const res = await this.gateway.verify(payment.gatewayRef!);
-      const finalStatus = res.status === 'SUCCESS' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
+    if (payment.status !== PaymentStatus.PENDING) {
+      this.logger.log(`Webhook received for payment ${payment.id} with status ${payment.status}; ignoring`);
+      return { ok: true };
+    }
 
-      const updated = await this.paymentRepo.update(payment.id, { status: finalStatus });
+    if (status === 'cancel') {
+      const updated = await this.paymentRepo.update(payment.id, { status: PaymentStatus.FAILED });
+      await this.publishOutbox();
+      return { ok: true, payment: updated };
+    }
 
-      if (finalStatus === PaymentStatus.COMPLETED) {
-        const event: PaymentCompletedEvent = {
-          paymentId: updated.id,
-          orderId: updated.orderId,
-          userId: updated.userId,
-          amount: updated.amount,
-          method: updated.method.toString(),
-        };
-        await this.events.publish<PaymentCompletedEvent>('payment.completed', event);
-      } else {
-        const event: PaymentFailedEvent = {
-          paymentId: updated.id,
-          orderId: updated.orderId,
-          userId: updated.userId,
-          amount: updated.amount,
-          method: updated.method.toString(),
-          reason: 'Verification failed',
-        };
-        await this.events.publish<PaymentFailedEvent>('payment.failed', event);
-      }
+    const verified = await this.verifyPayment(null, payment.id);
+    return { ok: true, payment: verified };
+  }
 
-      return updated;
-    });
+  private async buildIdempotencyKey(userId: number, orderId: number) {
+    return createHash('sha256').update(`${userId}:${orderId}`).digest('hex');
   }
 }

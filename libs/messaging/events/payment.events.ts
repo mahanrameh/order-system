@@ -1,4 +1,3 @@
-// Pending event when a payment is first initiated
 export interface PaymentPendingEvent {
   paymentId: number;
   orderId: number;
