@@ -201,6 +201,7 @@ enum ProductStatus {
   AVAILABLE
   OUT_OF_STOCK
   DISCONTINUED
+  UNKNOWN
 }
 
 enum ProductCategory {

@@ -35,8 +35,8 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Verify payment status explicitly' })
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async verify(@Req() req, @Body() dto: VerifyPaymentDto) {
-    const payment = await this.paymentService.verifyPayment(req.user.id, dto.paymentId);
+  async verify(@Body() dto: VerifyPaymentDto) {
+    const payment = await this.paymentService.verifyPayment(dto.paymentId);
     return { success: true, payment };
   }
 

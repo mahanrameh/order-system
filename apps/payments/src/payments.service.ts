@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -47,10 +46,12 @@ export class PaymentsService {
           }
 
           const payLoad = evt.payload as unknown as PaymentEventPayload;
-
           const payload = {
             paymentId: payLoad.paymentId,
             orderId: payLoad.orderId,
+            userId: payLoad.userId,
+            amount: payLoad.amount,
+            method: payLoad.method,
             status: payLoad.status,
             reason: payLoad.reason,
           };
@@ -73,27 +74,20 @@ export class PaymentsService {
 
           await this.paymentRepo.markOutboxDispatched(evt.id);
         } catch (err) {
-          this.logger.error(
-            `Failed to publish outbox event ${evt.id}`,
-            err?.stack ?? err,
-          );
+          this.logger.error(`Failed to publish outbox event ${evt.id}`, err?.stack ?? err);
         }
       }),
     );
   }
 
   async initiatePayment(userId: number, orderId: number, amount: number, currency = 'IRR') {
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Invalid amount');
-    }
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Invalid amount');
 
     const key = await this.buildIdempotencyKey(userId, orderId);
 
     return this.redisLock.withLock(`payment:init:order:${orderId}`, async () => {
       const cached = await this.redisCache.get<string>(`payment:idempotency:${key}`);
-      if (cached) {
-        return JSON.parse(cached);
-      }
+      if (cached) return JSON.parse(cached);
 
       const existing = await this.paymentRepo.findByOrderId(orderId);
       if (existing) {
@@ -119,13 +113,10 @@ export class PaymentsService {
     });
   }
 
-  async verifyPayment(requestorUserId: number | null, paymentId: number) {
+  async verifyPayment(paymentId: number) {
     return this.redisLock.withLock(`payment:verify:${paymentId}`, async () => {
       const payment = await this.paymentRepo.findById(paymentId);
       if (!payment) throw new NotFoundException('Payment not found');
-      if (requestorUserId !== null && payment.userId !== requestorUserId) {
-        throw new ForbiddenException('You are not allowed to verify this payment');
-      }
       if (payment.status !== PaymentStatus.PENDING) return payment;
 
       let res: BankVerifyResult;
@@ -137,8 +128,8 @@ export class PaymentsService {
       }
 
       const finalStatus = res.status === 'SUCCESS' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
-
       const updated = await this.paymentRepo.update(payment.id, { status: finalStatus });
+
       await this.publishOutbox();
       return updated;
     });
@@ -154,7 +145,7 @@ export class PaymentsService {
       return { ok: true };
     }
 
-    if (payment.status !== PaymentStatus.PENDING) {
+    if (payment.status == PaymentStatus.COMPLETED) {
       this.logger.log(`Webhook received for payment ${payment.id} with status ${payment.status}; ignoring`);
       return { ok: true };
     }
@@ -165,7 +156,7 @@ export class PaymentsService {
       return { ok: true, payment: updated };
     }
 
-    const verified = await this.verifyPayment(null, payment.id);
+    const verified = await this.verifyPayment(payment.id);
     return { ok: true, payment: verified };
   }
 

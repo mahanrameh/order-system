@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { BasketRepository } from 'apps/products-basket/src/repositories/basket.repository';
 import { ProductRepository } from 'apps/products-basket/src/repositories/product.repository';
 import { OrderRepository } from './repositories/order.repository';
@@ -6,7 +6,12 @@ import { StockMovementRepository } from './repositories/stock-movement.repositor
 import { OrderStatus, StockMovementReason } from 'libs/prisma/generated';
 import { RedisLockService } from 'libs/redis/redis-lock.service';
 import { RabbitMqService } from 'libs/messaging';
-import { OrderCreatedEvent, OrderCancelledEvent, OrderCompletedEvent, OrderFailedEvent } from 'libs/messaging/events/order.events';
+import {
+  OrderCreatedEvent,
+  OrderCancelledEvent,
+  OrderCompletedEvent,
+  OrderFailedEvent,
+} from 'libs/messaging/events/order.events';
 
 @Injectable()
 export class OrdersService {
@@ -22,9 +27,7 @@ export class OrdersService {
   async createOrder(userId: number, address: string) {
     return this.redisLock.withLock(`basket:${userId}`, async () => {
       const basket = await this.basketRepo.findActiveBasketByUser(userId);
-      if (!basket || basket.basketItems.length === 0) {
-        throw new BadRequestException('Basket is empty');
-      }
+      if (!basket || basket.basketItems.length === 0) throw new BadRequestException('Basket is empty');
 
       const existingOrder = await this.orderRepo.findByBasketId(basket.id);
       if (existingOrder) return existingOrder;
@@ -47,12 +50,12 @@ export class OrdersService {
         userId: order.userId,
         totalAmount: order.totalAmount,
       };
-      await this.events.publish<OrderCreatedEvent>('order.created', event);
+      await this.events.publish('order.created', event);
 
       await this.events.notify(
         order.userId,
         'EMAIL',
-        `Your order #${order.id} has been created with total ${order.totalAmount}.`
+        `Your order #${order.id} has been created with total ${order.totalAmount}.`,
       );
 
       return order;
@@ -80,14 +83,13 @@ export class OrdersService {
 
     const updated = await this.orderRepo.updateStatus(orderId, status);
 
-
     if (status === OrderStatus.COMPLETED) {
       const event: OrderCompletedEvent = {
         orderId: updated.id,
         userId: updated.userId,
         totalAmount: updated.totalAmount,
       };
-      await this.events.publish<OrderCompletedEvent>('order.completed', event);
+      await this.events.publish('order.completed', event);
     } else if (status === OrderStatus.FAILED) {
       const event: OrderFailedEvent = {
         orderId: updated.id,
@@ -95,7 +97,7 @@ export class OrdersService {
         totalAmount: updated.totalAmount,
         reason: 'Payment failed',
       };
-      await this.events.publish<OrderFailedEvent>('order.failed', event);
+      await this.events.publish('order.failed', event);
     }
 
     return updated;
@@ -103,10 +105,7 @@ export class OrdersService {
 
   async cancelOrder(orderId: number) {
     const order = await this.getOrder(orderId);
-
-    if (order.status === OrderStatus.COMPLETED) {
-      throw new BadRequestException('Completed orders cannot be cancelled');
-    }
+    if (order.status === OrderStatus.COMPLETED) throw new BadRequestException('Completed orders cannot be cancelled');
 
     await this.applyStockMovements(order.orderItems, StockMovementReason.ORDER_CANCELLED);
 
@@ -117,18 +116,16 @@ export class OrdersService {
       userId: updated.userId,
       totalAmount: updated.totalAmount,
     };
-    await this.events.publish<OrderCancelledEvent>('order.cancelled', event);
+    await this.events.publish('order.cancelled', event);
 
     return updated;
   }
 
-
   async onPaymentCompleted(orderId: number) {
-
     return this.redisLock.withLock(`order:status:${orderId}`, async () => {
       const order = await this.orderRepo.findById(orderId);
       if (!order) throw new BadRequestException('Order not found');
-      if (order.status === OrderStatus.COMPLETED) return order; 
+      if (order.status === OrderStatus.COMPLETED) return order;
 
       const updated = await this.orderRepo.updateStatus(orderId, OrderStatus.COMPLETED);
       return updated;
@@ -139,7 +136,7 @@ export class OrdersService {
     return this.redisLock.withLock(`order:status:${orderId}`, async () => {
       const order = await this.orderRepo.findById(orderId);
       if (!order) throw new BadRequestException('Order not found');
-      if (order.status === OrderStatus.FAILED) return order; 
+      if (order.status === OrderStatus.FAILED) return order;
 
       await this.applyStockMovements(order.orderItems, StockMovementReason.ORDER_CANCELLED);
 

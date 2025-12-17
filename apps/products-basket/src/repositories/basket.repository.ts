@@ -73,4 +73,10 @@ export class BasketRepository {
       where: { id: productId, deletedAt: null },
     });
   }
+
+  async removeProductFromAllBaskets(productId: number): Promise<void> {
+    await this.prisma.basketItem.deleteMany({
+      where: { productId },
+    });
+  }
 }

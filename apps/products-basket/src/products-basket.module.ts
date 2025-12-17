@@ -8,14 +8,17 @@ import { RedisModule } from 'libs/redis/redis.module';
 import { AuthModule } from '@app/auth';
 import { ProductRepository } from './repositories/product.repository';
 import { BasketRepository } from './repositories/basket.repository';
+import { MessagingModule } from 'libs/messaging';
+import { CatalogEventsConsumer } from '../catalog-events.consumer';
 
 @Module({
   imports: [
     PrismaModule,
     RedisModule,
     AuthModule,
+    MessagingModule
   ],
-  controllers: [ProductsBasketController, ProductsController],
+  controllers: [ProductsBasketController, ProductsController, CatalogEventsConsumer],
   providers: [
     ProductsBasketService,
     ProductsService,

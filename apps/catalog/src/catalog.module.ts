@@ -5,12 +5,14 @@ import { PrismaModule } from 'libs/prisma';
 import { RedisModule } from 'libs/redis/redis.module';
 import { AuthModule } from '@app/auth'; 
 import { CatalogRepository } from './repositories/catalog.repository';
+import { MessagingModule } from 'libs/messaging';
 
 @Module({
   imports: [
     PrismaModule,
     RedisModule,
-    AuthModule, 
+    AuthModule,
+    MessagingModule
   ],
   controllers: [CatalogController],
   providers: [CatalogService, CatalogRepository],
