@@ -13,6 +13,7 @@ import { PaymentsService } from './payments.service';
 import { InitiatePaymentDto, VerifyPaymentDto, GatewayWebhookDto } from './dto/payments.dto';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 import { SwaggerConsumes } from 'libs/common/src/enums/swagger-consumes.enum';
+import { CurrentUser } from 'libs/common/src/decorators/user.decorator';
 
 
 @ApiTags('payments')
@@ -26,8 +27,8 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Initiate a new payment' })
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async initiate(@Req() req, @Body() dto: InitiatePaymentDto) {
-    const payment = await this.paymentService.initiatePayment(req.user.id, dto.orderId, dto.amount);
+  async initiate(@CurrentUser('sub') userId: number, @Body() dto: InitiatePaymentDto) {
+    const payment = await this.paymentService.initiatePayment(userId, dto.orderId);
     return { success: true, payment };
   }
 

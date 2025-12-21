@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { IsString, Matches, IsNotEmpty, IsInt } from 'class-validator';
 
 export class CreateOtpDto {
@@ -6,6 +7,7 @@ export class CreateOtpDto {
     example: 1,
     description: 'User ID associated with the phone number',
   })
+  @Type(() => Number)
   @IsInt()
   @IsNotEmpty()
   userId: number;
@@ -35,13 +37,13 @@ export class VerifyOtpDto {
   phoneNumber: string;
 
   @ApiProperty({
-    example: '1234',
-    description: '4-digit OTP code',
+    example: '12345',
+    description: '5-digit OTP code',
   })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[0-9]{4}$/, {
-    message: 'code must be a 4-digit number',
+  @Matches(/^[0-9]{5}$/, {
+    message: 'code must be a 5-digit number',
   })
   code: string;
 }

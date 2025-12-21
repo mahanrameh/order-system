@@ -18,6 +18,7 @@ import { Role } from 'libs/common/src/enums/role.enum';
 import { SwaggerConsumes } from 'libs/common/src/enums/swagger-consumes.enum';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 import { UpdateOrderStatusDto, CreateOrderDto } from '../src/dto/order.dto';
+import { CurrentUser } from 'libs/common/src/decorators/user.decorator';
 
 @ApiTags('orders')
 @ApiBearerAuth('bearer')
@@ -28,8 +29,8 @@ export class OrdersController {
 
   @Post('create')
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async createOrder(@Req() req, @Body() dto: CreateOrderDto) {
-    return this.ordersService.createOrder(req.user.id, dto.address);
+  async createOrder(@CurrentUser('sub') userId: number, @Body() dto: CreateOrderDto) {
+    return this.ordersService.createOrder(userId, dto.address);
   }
 
   @Get(':orderId')
@@ -38,8 +39,8 @@ export class OrdersController {
   }
 
   @Get()
-  async listUserOrders(@Req() req) {
-    return this.ordersService.listUserOrders(req.user.id);
+  async listUserOrders(@CurrentUser('sub') userId: number) {
+    return this.ordersService.listUserOrders(userId);
   }
 
   @Put(':orderId/status')
@@ -54,14 +55,14 @@ export class OrdersController {
   }
 
   @Delete(':orderId/cancel')
-  async cancelOrder(@Req() req, @Param('orderId') orderId: string) {
+  async cancelOrder(@Param('orderId') orderId: string) {
     return this.ordersService.cancelOrder(Number(orderId));
   }
 
-  @Get('all')
-  @Roles(Role.ADMIN)
-  @UseGuards(RolesGuard)
-  async listAllOrders() {
-    return this.ordersService.listAllOrders();
-  }
+  // @Get('all')
+  // @Roles(Role.ADMIN)
+  // @UseGuards(RolesGuard)
+  // async listAllOrders() {
+  //   return this.ordersService.listAllOrders();
+  // }
 }

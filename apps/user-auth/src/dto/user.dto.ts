@@ -41,13 +41,12 @@ export class UpdateUserDto {
   @ApiProperty()
   @IsString()
   @IsOptional()
-  @IsPhoneNumber('IR')
   password?: string;
   
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  @Matches(/^\+?98[0-9]{10}$/, { message: 'phone must be in +98XXXXXXXXXX format' })
+  @IsPhoneNumber('IR')
   phone?: string;
 
 }

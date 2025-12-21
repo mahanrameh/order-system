@@ -68,9 +68,9 @@ export class OrdersService {
     return order;
   }
 
-  async listAllOrders() {
-    return this.orderRepo.listAll();
-  }
+  // async listAllOrders() {
+  //   return this.orderRepo.listAll();
+  // }
 
   async listUserOrders(userId?: number) {
     return userId ? this.orderRepo.listByUser(userId) : this.orderRepo.listAll();
@@ -120,6 +120,8 @@ export class OrdersService {
 
     return updated;
   }
+
+
 
   async onPaymentCompleted(orderId: number) {
     return this.redisLock.withLock(`order:status:${orderId}`, async () => {

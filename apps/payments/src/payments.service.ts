@@ -4,15 +4,17 @@ import {
   NotFoundException,
   Logger,
   InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PaymentRepository } from './repositories/payment.repository';
 import { BankAdapter, BankVerifyResult } from './adapters/bank.adapter';
-import { PaymentMethod, PaymentStatus } from 'libs/prisma/generated';
+import { OrderStatus, PaymentMethod, PaymentStatus } from 'libs/prisma/generated';
 import { RedisLockService } from 'libs/redis/redis-lock.service';
 import { RabbitMqService } from 'libs/messaging';
 import { RedisCacheService } from 'libs/redis/redis-cache.service';
 import { createHash } from 'crypto';
 import { PaymentEventPayload } from './types/payment-event-payload';
+import { OrderRepository } from 'apps/orders/src/repositories/order.repository';
 
 @Injectable()
 export class PaymentsService {
@@ -21,6 +23,7 @@ export class PaymentsService {
 
   constructor(
     private readonly paymentRepo: PaymentRepository,
+    private readonly orderRepo: OrderRepository,
     private readonly gateway: BankAdapter,
     private readonly events: RabbitMqService,
     private readonly redisLock: RedisLockService,
@@ -80,8 +83,22 @@ export class PaymentsService {
     );
   }
 
-  async initiatePayment(userId: number, orderId: number, amount: number, currency = 'IRR') {
-    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Invalid amount');
+  async initiatePayment(userId: number, orderId: number, currency = 'IRR') {
+    const order = await this.orderRepo.findById(orderId);
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.userId !== userId) {
+      throw new ForbiddenException('You cannot pay for this order');
+    }
+
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Order is not payable');
+    }
+
+    const amount = order.totalAmount; 
 
     const key = await this.buildIdempotencyKey(userId, orderId);
 
@@ -135,7 +152,7 @@ export class PaymentsService {
     });
   }
 
-  async handleGatewayWebhook(payload: { gatewayRef: string; status: 'ok' | 'cancel'; timestamp?: number }) {
+  async handleGatewayWebhook(payload: { gatewayRef: string, status: 'ok' | 'cancel' }) {
     const { gatewayRef, status } = payload;
     if (!gatewayRef) throw new BadRequestException('Missing gatewayRef');
 

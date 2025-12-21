@@ -18,7 +18,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       const raw = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
       if (raw) (req as any).rawAccessToken = raw;
 
-      console.log('JwtAuthGuard token:', raw);
     }
 
     if (!user) {

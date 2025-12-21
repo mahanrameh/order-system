@@ -23,11 +23,11 @@ export class CreateProductDto {
   @IsInt()
   stock: number;
 
-  @ApiProperty()
+  @ApiProperty({enum: ProductStatus, enumName: 'Product status'})
   @IsEnum(ProductStatus)
   status: ProductStatus;
 
-  @ApiProperty()
+  @ApiProperty({enum: ProductCategory, enumName: 'Product category'})
   @IsEnum(ProductCategory)
   category: ProductCategory;
 }
@@ -51,10 +51,16 @@ export class UpdateProductDto {
 
   @ApiProperty()
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  discount?: number
+
+  @ApiProperty({enum: ProductStatus, enumName: 'Product status'})
+  @IsOptional()
   @IsEnum(ProductStatus)
   status?: ProductStatus;
 
-  @ApiProperty()
+  @ApiProperty({enum: ProductCategory, enumName: 'Product category'})
   @IsOptional()
   @IsEnum(ProductCategory)
   category?: ProductCategory;
@@ -62,6 +68,7 @@ export class UpdateProductDto {
 
 export class ReserveInventoryDto {
   @ApiProperty()
+  @Type(() => Number)
   @IsNumber()
   quantity: number;
 
@@ -73,6 +80,7 @@ export class ReserveInventoryDto {
 
 export class RestockProductDto {
   @ApiProperty()
+  @Type(() => Number)
   @IsNumber()
   quantity: number;
 

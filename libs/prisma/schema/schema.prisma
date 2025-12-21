@@ -58,6 +58,8 @@ model Otp {
   expiredAt   DateTime
   createdAt   DateTime  @default(now())
   deletedAt   DateTime?
+
+  @@map("otps")
 }
 
 model Product {
@@ -214,9 +216,7 @@ enum ProductCategory {
 
 enum OrderStatus {
   PENDING
-  PROCESSING
   COMPLETED
-  FAILED
   CANCELLED
 }
 

@@ -39,7 +39,7 @@ export enum PublicMessage {
     Updated = 'با موفقیت به‌روزرسانی شد',
     Deleted = 'با موفقیت حذف شد',
     Inserted = 'با موفقیت درج شد',
-    OtpVerified = 'کد تایید با موفقیت تأیید شد',
+    OtpVerified = 'کد یک‌بار مصرف با موفقیت تأیید شد',
 }
 
 export enum ConflictMessage {
