@@ -21,7 +21,7 @@ export class CatalogRepository {
   async softDeleteProduct(id: number) {
     return this.prisma.product.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { status: 'DISCONTINUED', deletedAt: new Date() },
     });
   }
 

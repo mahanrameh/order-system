@@ -27,7 +27,7 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  @UseGuards(RolesGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   @Pagination()
   getUsers(@Query() paginationDto: PaginationDto) {
@@ -35,16 +35,16 @@ export class UserController {
   }
 
   @Get(':id')
-  @UseGuards(RolesGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
   getUserById(@Param('id', ParseIntPipe) id: number) {
     return this.userService.getUserById(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('update')
-  @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  update(@Body() updateUserDto: UpdateUserDto, @CurrentUser() user: any) {
-    return this.userService.updateUser(user.id, updateUserDto);
+  update(@Body() dto: UpdateUserDto, @CurrentUser() user: any, @CurrentUser('sub') userId: number) {
+    return this.userService.updateUser(userId, dto);
   }
 
   @Patch(':id/role')

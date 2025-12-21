@@ -17,6 +17,7 @@ import { Role } from 'libs/common/src/enums/role.enum';
 import { SwaggerConsumes } from 'libs/common/src/enums/swagger-consumes.enum';
 import { JwtAuthGuard } from '@app/auth/guards/access.guard';
 import { AddToBasketDto, UpdateQuantityDto } from '../dto/basket.dto';
+import { CurrentUser } from 'libs/common/src/decorators/user.decorator';
 
 @ApiTags('basket')
 @ApiBearerAuth('bearer')
@@ -27,29 +28,29 @@ export class ProductsBasketController {
 
   @Post('add')
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async addToBasket(@Req() req, @Body() dto: AddToBasketDto) {
-    return this.basketService.addToBasket(req.user.id, dto.productId, dto.quantity ?? 1);
+  async addToBasket(@CurrentUser('sub') userId: number, @Body() dto: AddToBasketDto) {
+    return this.basketService.addToBasket(userId, dto.productId, dto.quantity ?? 1);
   }
 
   @Put('quantity')
   @ApiConsumes(SwaggerConsumes.UrlEncoded, SwaggerConsumes.Json)
-  async updateQuantity(@Req() req, @Body() dto: UpdateQuantityDto) {
-    return this.basketService.updateQuantity(req.user.id, dto.productId, dto.quantity);
+  async updateQuantity(@CurrentUser('sub') userId: number, @Body() dto: UpdateQuantityDto) {
+    return this.basketService.updateQuantity(userId, dto.productId, dto.quantity);
   }
 
   @Delete('item/:productId')
-  async removeFromBasket(@Req() req, @Param('productId') productId: string) {
-    return this.basketService.removeFromBasket(req.user.id, Number(productId));
+  async removeFromBasket(@CurrentUser('sub') userId: number, @Param('productId') productId: string) {
+    return this.basketService.removeFromBasket(userId, Number(productId));
   }
 
   @Delete('clear')
-  async clearBasket(@Req() req) {
-    return this.basketService.clearBasket(req.user.id);
+  async clearBasket(@CurrentUser('sub') userId: number) {
+    return this.basketService.clearBasket(userId);
   }
 
   @Get()
-  async getBasket(@Req() req) {
-    return this.basketService.getBasket(req.user.id);
+  async getBasket(@CurrentUser('sub') userId: number) {
+    return this.basketService.getBasket(userId);
   }
 
   @Delete(':userId')

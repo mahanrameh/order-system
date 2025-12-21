@@ -2,18 +2,19 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  ForbiddenException,
   Logger,
   InternalServerErrorException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PaymentRepository } from './repositories/payment.repository';
 import { BankAdapter, BankVerifyResult } from './adapters/bank.adapter';
-import { PaymentMethod, PaymentStatus } from 'libs/prisma/generated';
+import { OrderStatus, PaymentMethod, PaymentStatus } from 'libs/prisma/generated';
 import { RedisLockService } from 'libs/redis/redis-lock.service';
 import { RabbitMqService } from 'libs/messaging';
 import { RedisCacheService } from 'libs/redis/redis-cache.service';
 import { createHash } from 'crypto';
 import { PaymentEventPayload } from './types/payment-event-payload';
+import { OrderRepository } from 'apps/orders/src/repositories/order.repository';
 
 @Injectable()
 export class PaymentsService {
@@ -22,6 +23,7 @@ export class PaymentsService {
 
   constructor(
     private readonly paymentRepo: PaymentRepository,
+    private readonly orderRepo: OrderRepository,
     private readonly gateway: BankAdapter,
     private readonly events: RabbitMqService,
     private readonly redisLock: RedisLockService,
@@ -47,10 +49,12 @@ export class PaymentsService {
           }
 
           const payLoad = evt.payload as unknown as PaymentEventPayload;
-
           const payload = {
             paymentId: payLoad.paymentId,
             orderId: payLoad.orderId,
+            userId: payLoad.userId,
+            amount: payLoad.amount,
+            method: payLoad.method,
             status: payLoad.status,
             reason: payLoad.reason,
           };
@@ -73,27 +77,34 @@ export class PaymentsService {
 
           await this.paymentRepo.markOutboxDispatched(evt.id);
         } catch (err) {
-          this.logger.error(
-            `Failed to publish outbox event ${evt.id}`,
-            err?.stack ?? err,
-          );
+          this.logger.error(`Failed to publish outbox event ${evt.id}`, err?.stack ?? err);
         }
       }),
     );
   }
 
-  async initiatePayment(userId: number, orderId: number, amount: number, currency = 'IRR') {
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Invalid amount');
+  async initiatePayment(userId: number, orderId: number, currency = 'IRR') {
+    const order = await this.orderRepo.findById(orderId);
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
     }
+
+    if (order.userId !== userId) {
+      throw new ForbiddenException('You cannot pay for this order');
+    }
+
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Order is not payable');
+    }
+
+    const amount = order.totalAmount; 
 
     const key = await this.buildIdempotencyKey(userId, orderId);
 
     return this.redisLock.withLock(`payment:init:order:${orderId}`, async () => {
       const cached = await this.redisCache.get<string>(`payment:idempotency:${key}`);
-      if (cached) {
-        return JSON.parse(cached);
-      }
+      if (cached) return JSON.parse(cached);
 
       const existing = await this.paymentRepo.findByOrderId(orderId);
       if (existing) {
@@ -119,13 +130,10 @@ export class PaymentsService {
     });
   }
 
-  async verifyPayment(requestorUserId: number | null, paymentId: number) {
+  async verifyPayment(paymentId: number) {
     return this.redisLock.withLock(`payment:verify:${paymentId}`, async () => {
       const payment = await this.paymentRepo.findById(paymentId);
       if (!payment) throw new NotFoundException('Payment not found');
-      if (requestorUserId !== null && payment.userId !== requestorUserId) {
-        throw new ForbiddenException('You are not allowed to verify this payment');
-      }
       if (payment.status !== PaymentStatus.PENDING) return payment;
 
       let res: BankVerifyResult;
@@ -137,14 +145,14 @@ export class PaymentsService {
       }
 
       const finalStatus = res.status === 'SUCCESS' ? PaymentStatus.COMPLETED : PaymentStatus.FAILED;
-
       const updated = await this.paymentRepo.update(payment.id, { status: finalStatus });
+
       await this.publishOutbox();
       return updated;
     });
   }
 
-  async handleGatewayWebhook(payload: { gatewayRef: string; status: 'ok' | 'cancel'; timestamp?: number }) {
+  async handleGatewayWebhook(payload: { gatewayRef: string, status: 'ok' | 'cancel' }) {
     const { gatewayRef, status } = payload;
     if (!gatewayRef) throw new BadRequestException('Missing gatewayRef');
 
@@ -154,7 +162,7 @@ export class PaymentsService {
       return { ok: true };
     }
 
-    if (payment.status !== PaymentStatus.PENDING) {
+    if (payment.status == PaymentStatus.COMPLETED) {
       this.logger.log(`Webhook received for payment ${payment.id} with status ${payment.status}; ignoring`);
       return { ok: true };
     }
@@ -165,7 +173,7 @@ export class PaymentsService {
       return { ok: true, payment: updated };
     }
 
-    const verified = await this.verifyPayment(null, payment.id);
+    const verified = await this.verifyPayment(payment.id);
     return { ok: true, payment: verified };
   }
 

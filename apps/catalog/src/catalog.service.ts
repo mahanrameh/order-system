@@ -10,6 +10,7 @@ import {
 import { ProductStatus, StockMovementReason } from 'libs/prisma/generated';
 import { CatalogRepository } from './repositories/catalog.repository';
 import { RabbitMqService } from 'libs/messaging';
+import { ProductStockChangedEvent } from 'libs/messaging/events/product.events';
 
 @Injectable()
 export class CatalogService {
@@ -32,12 +33,7 @@ export class CatalogService {
     }
 
     await this.cache.set(`product:${product.id}`, product, 300);
-
-    await this.events.notify(
-      0,
-      'EMAIL',
-      `Product "${product.name}" has been created with stock ${dto.stock}.`
-    );
+    await this.publishStockChanged(product.id, product.stock, product.status);
 
     return product;
   }
@@ -50,15 +46,14 @@ export class CatalogService {
       const updated = await this.repo.updateProduct(id, dto);
       await this.cache.set(`product:${id}`, updated, 300);
 
-      await this.events.notify(
-        0,
-        'EMAIL',
-        `Product "${updated.name}" has been updated.`
-      );
+      if (dto.status !== undefined) {
+        await this.publishStockChanged(updated.id, updated.stock, updated.status);
+      }
 
       return updated;
     });
   }
+
 
   async deleteProduct(id: number) {
     return this.lock.withLock(`product:${id}`, async () => {
@@ -68,12 +63,7 @@ export class CatalogService {
       const deleted = await this.repo.softDeleteProduct(id);
       await this.cache.del(`product:${id}`);
 
-      await this.events.notify(
-        0,
-        'EMAIL',
-        `Product "${existing.name}" has been deleted.`
-      );
-
+      await this.publishStockChanged(id, 0, ProductStatus.OUT_OF_STOCK);
       return deleted;
     });
   }
@@ -85,12 +75,7 @@ export class CatalogService {
     const restored = await this.repo.restoreProduct(id);
     await this.cache.set(`product:${id}`, restored, 300);
 
-    await this.events.notify(
-      0,
-      'EMAIL',
-      `Product "${restored.name}" has been restored.`
-    );
-
+    await this.publishStockChanged(restored.id, restored.stock, restored.status);
     return restored;
   }
 
@@ -98,9 +83,7 @@ export class CatalogService {
     return this.lock.withLock(`inventory:${productId}`, async () => {
       const product = await this.repo.findProductById(productId);
       if (!product) throw new NotFoundException('Product not found');
-      if (product.stock < dto.quantity) {
-        throw new BadRequestException('Not enough stock');
-      }
+      if (product.stock < dto.quantity) throw new BadRequestException('Not enough stock');
 
       const newStock = product.stock - dto.quantity;
       const updated = await this.repo.updateProduct(productId, { 
@@ -115,12 +98,7 @@ export class CatalogService {
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
-
-      await this.events.notify(
-        0,
-        'EMAIL',
-        `Reserved ${dto.quantity} units of product #${productId}.`
-      );
+      await this.publishStockChanged(productId, updated.stock, updated.status);
 
       return updated;
     });
@@ -144,14 +122,18 @@ export class CatalogService {
       });
 
       await this.cache.set(`product:${productId}`, updated, 300);
-
-      await this.events.notify(
-        0,
-        'EMAIL',
-        `Product "${updated.name}" has been restocked with ${dto.quantity} units.`
-      );
+      await this.publishStockChanged(productId, updated.stock, updated.status);
 
       return updated;
     });
+  }
+
+  private async publishStockChanged(productId: number, newStock: number, status: ProductStatus) {
+    const payload: ProductStockChangedEvent = {
+      productId,
+      newStock,
+      status: status as any,
+    };
+    await this.events.publish('product.stock.changed', payload);
   }
 }

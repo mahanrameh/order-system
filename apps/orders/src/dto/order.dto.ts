@@ -10,7 +10,7 @@ export class CreateOrderDto {
 }
 
 export class UpdateOrderStatusDto {
-  @ApiProperty()
+  @ApiProperty({enum: OrderStatus, enumName: 'Order status'})
   @IsEnum(OrderStatus)
   status: OrderStatus;
 }

@@ -81,7 +81,6 @@ export class UserService {
         },
       };
     } catch (err) {
-      console.error('Updating failed:', err);
       throw new BadRequestException(AuthMessage.TryAgain);
     }
   }

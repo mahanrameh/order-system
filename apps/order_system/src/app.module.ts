@@ -11,6 +11,7 @@ import { UserAuthModule } from 'apps/user-auth/src/user-auth.module';
 import { AuthModule } from '@app/auth';
 import { OrdersModule } from 'apps/orders/src/orders.module';
 import { PaymentsModule } from 'apps/payments/src/payments.module';
+import { MessagingModule } from 'libs/messaging';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PaymentsModule } from 'apps/payments/src/payments.module';
     }),
     PrismaModule,
     RedisModule,
+    MessagingModule,
     AuthModule,            
     UserAuthModule,
     ProductsBasketModule,

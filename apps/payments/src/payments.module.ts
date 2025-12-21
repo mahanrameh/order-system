@@ -7,6 +7,7 @@ import { BankAdapter } from './adapters/bank.adapter';
 import { MessagingModule } from 'libs/messaging/messaging.module';
 import { RedisModule } from 'libs/redis/redis.module';
 import { PrismaModule } from 'libs/prisma';
+import { OrderRepository } from 'apps/orders/src/repositories/order.repository';
 
 @Module({
   imports: [MessagingModule, RedisModule, PrismaModule],
@@ -14,6 +15,7 @@ import { PrismaModule } from 'libs/prisma';
   providers: [
     PaymentsService,
     PaymentRepository,
+    OrderRepository,
     { provide: BankAdapter, useClass: FakeIranBankAdapter },
     FakeIranBankAdapter,
   ],

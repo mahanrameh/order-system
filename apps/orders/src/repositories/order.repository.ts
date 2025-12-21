@@ -7,7 +7,7 @@ export class OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByBasketId(basketId: number) {
-    return this.prisma.order.findFirst({ where: { basketId, deletedAt: null } });
+    return this.prisma.order.findFirst({ where: { basketId, deletedAt: null, status: 'PENDING' } });
   }
 
   async createOrder(data: any) {
@@ -28,7 +28,6 @@ export class OrderRepository {
     return this.prisma.order.findMany({
       where: { deletedAt: null },
       orderBy: { createdAt: 'desc' },
-      include: { orderItems: { include: { product: true } }, payment: true },
     });
   }
 

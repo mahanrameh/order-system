@@ -32,38 +32,42 @@ export class AuthService {
     }
 
     createOtpToken(): string {
-    return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit
+    return Math.floor(1000 + Math.random() * 90000).toString(); // 5-digit
     }
 
     async verifyOtpToken(phoneNumber: string, code: string): Promise<boolean> {
-    const otpRecord = await this.prisma.client.otp.findFirst({
-        where: {
-        phoneNumber,
-        code,
-        },
-    });
+        const otpRecord = await this.prisma.otp.findFirst({
+            where: {
+            phoneNumber,
+            code,
+            deletedAt: null
+            },
+        });
 
-    if (!otpRecord) {
-        throw new NotAcceptableException(NotFoundMessage.NotFound);
-    }
+        console.log(otpRecord);
+        
 
-    if (otpRecord.isVerified) {
-        throw new UnauthorizedException(AuthMessage.AlreadyExistAccount);
-    }
+        if (!otpRecord) {
+            throw new NotAcceptableException(NotFoundMessage.NotFound);
+        }
 
-    const now = Date.now();
-    const expiredAt = new Date(otpRecord.expiredAt).getTime();
+        if (otpRecord.isVerified) {
+            throw new UnauthorizedException(AuthMessage.AlreadyExistAccount);
+        }
 
-    if (now > expiredAt) {
-        throw new UnauthorizedException(AuthMessage.ExpiredCode);
-    }
+        const now = Date.now();
+        const expiredAt = new Date(otpRecord.expiredAt).getTime();
 
-    await this.prisma.client.otp.update({
-        where: { id: otpRecord.id },
-        data: { isVerified: true },
-    });
+        if (now > expiredAt) {
+            throw new UnauthorizedException(AuthMessage.ExpiredCode);
+        }
 
-    return true;
+        await this.prisma.otp.update({
+            where: { id: otpRecord.id },
+            data: { isVerified: true },
+        });
+
+        return true;
     }
 
 

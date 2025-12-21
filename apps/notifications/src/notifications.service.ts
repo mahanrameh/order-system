@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'libs/prisma/src/prisma.service';
-import { NotificationType } from '../../../libs/prisma/generated';
+import { NotificationType } from 'libs/prisma/generated';
 
 @Injectable()
 export class NotificationsService {
@@ -8,11 +8,7 @@ export class NotificationsService {
 
   async create(userId: number, type: NotificationType, message: string) {
     return this.prisma.notification.create({
-      data: {
-        userId,
-        type,
-        message,
-      },
+      data: { userId, type, message },
     });
   }
 

@@ -11,12 +11,14 @@ import { UserAuthRepository } from './repositories/user-auth.repository';
 import { UserRepository } from './repositories/user.repository';
 import { OtpRepository } from './repositories/otp.repository';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
+import { MessagingModule } from 'libs/messaging';
 
 @Module({
   imports: [
     ConfigModule.forFeature(jwtConfig),
     PrismaModule,
-    AuthModule, 
+    AuthModule,
+    MessagingModule
   ],
   controllers: [UserAuthController, UserController],
   providers: [
